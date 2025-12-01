@@ -26,14 +26,35 @@ def get_environment_config():
     Obtener configuración desde variables de entorno.
 
     Returns:
-        Tupla con (playlist_url, download_path, interval_ms, cookies_path)
+        Tupla con configuración
     """
     playlist_url = os.getenv("PLAYLIST_URL")
     download_path = os.getenv("DOWNLOAD_PATH", "./downloads")
     interval_ms = int(os.getenv("OBSERVER_INTERVAL_MS", "60000"))
     cookies_path = os.getenv("COOKIES_FILE")
+    
+    # Configuración de sincronización bidireccional
+    enable_sync_deletions = os.getenv("ENABLE_SYNC_DELETIONS", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    use_trash_folder = os.getenv("USE_TRASH_FOLDER", "true").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    trash_retention_days = int(os.getenv("TRASH_RETENTION_DAYS", "7"))
 
-    return playlist_url, download_path, interval_ms, cookies_path
+    return (
+        playlist_url,
+        download_path,
+        interval_ms,
+        cookies_path,
+        enable_sync_deletions,
+        use_trash_folder,
+        trash_retention_days,
+    )
 
 
 def validate_config(playlist_url: str, download_path: str) -> bool:
@@ -97,6 +118,21 @@ def main():
         "--cookies",
         help="Ruta a archivo de cookies de YouTube para playlists privadas/edad/región",
     )
+    parser.add_argument(
+        "--enable-sync-deletions",
+        action="store_true",
+        help="Habilitar sincronización bidireccional (eliminar archivos cuando se eliminan de la playlist)",
+    )
+    parser.add_argument(
+        "--disable-trash",
+        action="store_true",
+        help="Eliminar archivos permanentemente en lugar de moverlos a .trash",
+    )
+    parser.add_argument(
+        "--trash-retention-days",
+        type=int,
+        help="Días de retención en carpeta .trash antes de eliminar permanentemente (default: 7)",
+    )
 
     args = parser.parse_args()
 
@@ -108,7 +144,15 @@ def main():
     setup_logging()
 
     # Obtener configuración
-    playlist_url, download_path, interval_ms, cookies_path = get_environment_config()
+    (
+        playlist_url,
+        download_path,
+        interval_ms,
+        cookies_path,
+        enable_sync_deletions,
+        use_trash_folder,
+        trash_retention_days,
+    ) = get_environment_config()
 
     # Sobrescribir con argumentos de línea de comandos si se proporcionan
     if args.playlist_url:
@@ -117,6 +161,12 @@ def main():
         download_path = args.download_path
     if args.cookies:
         cookies_path = args.cookies
+    if args.enable_sync_deletions:
+        enable_sync_deletions = True
+    if args.disable_trash:
+        use_trash_folder = False
+    if args.trash_retention_days is not None:
+        trash_retention_days = args.trash_retention_days
 
     # Validar configuración
     if not validate_config(playlist_url, download_path):
@@ -125,7 +175,13 @@ def main():
     try:
         # Crear watcher
         watcher = YouTubeWatcher(
-            playlist_url, download_path, interval_ms, cookies_path=cookies_path
+            playlist_url,
+            download_path,
+            interval_ms,
+            cookies_path=cookies_path,
+            enable_sync_deletions=enable_sync_deletions,
+            use_trash_folder=use_trash_folder,
+            trash_retention_days=trash_retention_days,
         )
 
         if args.latest_only:

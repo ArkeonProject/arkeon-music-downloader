@@ -31,12 +31,15 @@ class YouTubeDownloader:
         # Crear directorio si no existe
         self.download_path.mkdir(parents=True, exist_ok=True)
 
-    def download_and_convert(self, video_data: Dict) -> bool:
+    def download_and_convert(self, video_data: Dict) -> Optional[Dict]:
         """
         Descargar y convertir un video a FLAC con metadatos.
 
         Args:
             video_data: Diccionario con información del video
+
+        Returns:
+            Dict con información de descarga o None si falla
         """
         title = video_data.get("title", "Unknown Title")
         artist = (
@@ -86,16 +89,21 @@ class YouTubeDownloader:
         # Evitar duplicados: si el archivo ya existe, no volver a descargar
         if output_path.exists():
             logger.info(f"Archivo ya existe, omitiendo descarga: {filename}")
-            return True
+            return {
+                "success": True,
+                "filename": filename,
+                "title": title,
+                "artist": artist,
+            }
 
         # Paso 1: Descargar audio en Opus
         temp_opus = self._download_opus(video_data, title)
         if not temp_opus:
-            return False
+            return None
 
         # Paso 2: Convertir a FLAC
         if not self._convert_to_flac(temp_opus, output_path, title):
-            return False
+            return None
 
         # Limpiar archivo temporal
         temp_opus.unlink(missing_ok=True)
@@ -106,7 +114,12 @@ class YouTubeDownloader:
         )
 
         logger.info(f"FLAC listo: {filename}")
-        return True
+        return {
+            "success": True,
+            "filename": filename,
+            "title": title,
+            "artist": artist,
+        }
 
     def _download_opus(self, video_data: Dict, title: str) -> Optional[Path]:
         """

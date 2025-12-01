@@ -13,9 +13,15 @@ Cómo publicar una versión
 3) El workflow de GitHub Actions crea la Release, adjunta artefactos y (opcional) publica la imagen Docker.
 
 Unreleased
-- Added:
-- Changed:
+- Added: Sincronización bidireccional - detecta y elimina archivos cuando se eliminan canciones de la playlist
+- Added: Modo papelera de reciclaje para recuperación de archivos eliminados (.trash/)
+- Added: Auto-limpieza de carpeta .trash/ con retención configurable
+- Added: Variables de entorno ENABLE_SYNC_DELETIONS, USE_TRASH_FOLDER y TRASH_RETENTION_DAYS
+- Added: Argumentos CLI --enable-sync-deletions, --disable-trash y --trash-retention-days
+- Changed: downloader.download_and_convert() ahora retorna dict con metadata en lugar de bool
+- Changed: Estado persistente (.downloaded.json) ahora incluye mapeo de video_id a filename y metadata
 - Fixed:
+
 
 3.0.7 - 2025-09-02
 - Fixed: Cumplimiento flake8 E501 (línea larga) en `downloader.py` al envolver la URL de fallback de thumbnail; CI verde de nuevo.
