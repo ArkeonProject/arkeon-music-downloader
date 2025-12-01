@@ -278,11 +278,12 @@ git tag -a v3.0.2 -m "Release v3.0.2"
 git push && git push --tags
 ```
 
-3) GitHub Actions ejecuta el workflow de release:
+3) GitHub Actions ejecuta el workflow de release (`release.yml`):
 - Construye el paquete Python (`dist/*.whl`, `dist/*.tar.gz`).
 - Verifica que la versión del paquete coincide con el tag.
 - Crea la GitHub Release y adjunta artefactos.
-- Si has configurado Docker Hub, construye y publica la imagen con tags `v3.0.2` y `latest`.
+- Construye y publica la imagen Docker en **GHCR** (`ghcr.io/arkeonproject/arkeon-music-downloader`).
+- Si has configurado Docker Hub, también publica allí.
 
 ### Configurar publicación de imagen Docker (opcional)
 

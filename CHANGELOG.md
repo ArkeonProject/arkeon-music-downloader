@@ -12,7 +12,7 @@ Cómo publicar una versión
 2) Crea el tag Git `vX.Y.Z` y haz push. La versión del paquete se deriva del tag vía `setuptools_scm`.
 3) El workflow de GitHub Actions crea la Release, adjunta artefactos y (opcional) publica la imagen Docker.
 
-Unreleased
+3.1.0 - 2025-12-01
 - Added: Sincronización bidireccional - detecta y elimina archivos cuando se eliminan canciones de la playlist
 - Added: Modo papelera de reciclaje para recuperación de archivos eliminados (.trash/)
 - Added: Auto-limpieza de carpeta .trash/ con retención configurable
