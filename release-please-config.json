@@ -1,0 +1,9 @@
+{
+  "bootstrap-sha": "6c6672de166e84088fbc344748b3eb7ba8cb0571",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}
