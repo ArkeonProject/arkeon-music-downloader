@@ -8,6 +8,7 @@ Pillow>=10.0.0
 # HTTP requests
 requests>=2.31.0
 
-# Herramientas externas requeridas (instalar por separado):
-# - yt-dlp: https://github.com/yt-dlp/yt-dlp
-# - ffmpeg: https://ffmpeg.org/download.html
+# Herramientas externas (ahora como dependencia de Python):
+yt-dlp>=2023.0.0
+
+# ffmpeg sigue siendo externo (instalar por separado)

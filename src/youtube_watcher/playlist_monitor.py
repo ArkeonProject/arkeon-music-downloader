@@ -2,10 +2,12 @@
 Monitor de playlist de YouTube - Obtiene información de videos
 """
 
-import json
 import logging
-import subprocess
+import tempfile
+from pathlib import Path
 from typing import Dict, List
+
+import yt_dlp
 
 logger = logging.getLogger(__name__)
 
@@ -33,52 +35,28 @@ class PlaylistMonitor:
             Lista de diccionarios con información de cada video
         """
         try:
-            # Usar salida única de la playlist en modo "flat"; tolerar errores
-            cmd = [
-                "yt-dlp",
-                "-J",
-                "--flat-playlist",
-                "--ignore-errors",
-                "--cache-dir",
-                "/tmp/yt-dlp-cache",
-            ]
+            ydl_opts = {
+                "extract_flat": True,
+                "ignoreerrors": True,
+                "quiet": True,
+                "no_warnings": True,
+                "cachedir": str(Path(tempfile.gettempdir()) / "yt-dlp-cache"),
+            }
             if self.cookies_path:
-                cmd += ["--cookies", self.cookies_path]
-            cmd += [self.playlist_url]
+                ydl_opts["cookiefile"] = self.cookies_path
 
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(self.playlist_url, download=False)
 
-            videos: List[Dict] = []
-            stdout = (result.stdout or "").strip()
-            if stdout:
-                # Intentar parsear un único JSON (playlist o video)
-                try:
-                    data = json.loads(stdout)
-                    if isinstance(data, dict):
-                        entries = data.get("entries")
-                        if isinstance(entries, list) and entries:
-                            for entry in entries:
-                                if entry and isinstance(entry, dict):
-                                    videos.append(entry)
-                        else:
-                            # Fallback: salida de un solo video
-                            if data.get("id"):
-                                videos.append(data)
-                    # Si no es dict, caeremos al parseo por líneas
-                except json.JSONDecodeError:
-                    # Fallback: varias líneas JSON
-                    for line in stdout.splitlines():
-                        if not line.strip():
-                            continue
-                        try:
-                            item = json.loads(line)
-                            if item:
-                                videos.append(item)
-                        except json.JSONDecodeError:
-                            continue
+                if not info:
+                    return []
 
-            logger.info(f"Obtenidos {len(videos)} videos de la playlist")
-            return videos
+                if "entries" in info:
+                    # Filtrar entradas nulas que a veces retorna yt-dlp
+                    return [entry for entry in info["entries"] if entry]
+
+                # Fallback: si es un solo video
+                return [info]
 
         except Exception as e:
             logger.error(f"Error obteniendo videos de playlist: {e}")
@@ -92,32 +70,32 @@ class PlaylistMonitor:
             Diccionario con información de la playlist
         """
         try:
-            # Usar un único JSON con metadatos de la playlist
-            cmd = [
-                "yt-dlp",
-                "-J",  # equivalente a --dump-single-json
-                "--ignore-errors",
-                "--cache-dir",
-                "/tmp/yt-dlp-cache",
-            ]
-            if self.cookies_path:
-                cmd += ["--cookies", self.cookies_path]
-            cmd += [self.playlist_url]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-
-            if not result.stdout:
-                return {}
-
-            data = json.loads(result.stdout)
-            entries = data.get("entries", [])
-
-            return {
-                "title": data.get("title", "Unknown Playlist"),
-                "uploader": data.get("uploader", "Unknown"),
-                "video_count": len(entries) if isinstance(entries, list) else 0,
-                "description": data.get("description", ""),
-                "upload_date": data.get("upload_date", ""),
+            ydl_opts = {
+                "dump_single_json": True,
+                "extract_flat": True,
+                "ignoreerrors": True,
+                "quiet": True,
+                "no_warnings": True,
+                "cachedir": str(Path(tempfile.gettempdir()) / "yt-dlp-cache"),
             }
+            if self.cookies_path:
+                ydl_opts["cookiefile"] = self.cookies_path
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(self.playlist_url, download=False)
+
+                if not info:
+                    return {}
+
+                entries = info.get("entries", [])
+
+                return {
+                    "title": info.get("title", "Unknown Playlist"),
+                    "uploader": info.get("uploader", "Unknown"),
+                    "video_count": len(entries) if isinstance(entries, list) else 0,
+                    "description": info.get("description", ""),
+                    "upload_date": info.get("upload_date", ""),
+                }
 
         except Exception as e:
             logger.error(f"Error obteniendo información de playlist: {e}")

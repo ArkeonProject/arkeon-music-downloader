@@ -4,6 +4,16 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    build-essential \
+    python3-dev \
+    zlib1g-dev \
+    libjpeg62-turbo-dev \
+    libpng-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libtiff-dev \
+    libwebp-dev \
+    libopenjp2-7 \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar yt-dlp version fija para reproducibilidad

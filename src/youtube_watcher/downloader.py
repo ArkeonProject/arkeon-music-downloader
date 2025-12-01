@@ -4,8 +4,11 @@ Downloader de YouTube - Descarga y convierte videos a FLAC
 
 import logging
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, Optional
+
+import yt_dlp
 
 from .metadata_handler import MetadataHandler
 
@@ -31,12 +34,15 @@ class YouTubeDownloader:
         # Crear directorio si no existe
         self.download_path.mkdir(parents=True, exist_ok=True)
 
-    def download_and_convert(self, video_data: Dict) -> bool:
+    def download_and_convert(self, video_data: Dict) -> Optional[Dict]:
         """
         Descargar y convertir un video a FLAC con metadatos.
 
         Args:
             video_data: Diccionario con información del video
+
+        Returns:
+            Dict con información de descarga o None si falla
         """
         title = video_data.get("title", "Unknown Title")
         artist = (
@@ -86,16 +92,21 @@ class YouTubeDownloader:
         # Evitar duplicados: si el archivo ya existe, no volver a descargar
         if output_path.exists():
             logger.info(f"Archivo ya existe, omitiendo descarga: {filename}")
-            return True
+            return {
+                "success": True,
+                "filename": filename,
+                "title": title,
+                "artist": artist,
+            }
 
         # Paso 1: Descargar audio en Opus
         temp_opus = self._download_opus(video_data, title)
         if not temp_opus:
-            return False
+            return None
 
         # Paso 2: Convertir a FLAC
         if not self._convert_to_flac(temp_opus, output_path, title):
-            return False
+            return None
 
         # Limpiar archivo temporal
         temp_opus.unlink(missing_ok=True)
@@ -106,7 +117,12 @@ class YouTubeDownloader:
         )
 
         logger.info(f"FLAC listo: {filename}")
-        return True
+        return {
+            "success": True,
+            "filename": filename,
+            "title": title,
+            "artist": artist,
+        }
 
     def _download_opus(self, video_data: Dict, title: str) -> Optional[Path]:
         """
@@ -120,27 +136,35 @@ class YouTubeDownloader:
             Path al archivo Opus temporal o None si falla
         """
         base_filename = f"temp_{video_data['id']}"
+        # Template de salida esperado por yt-dlp
+        out_tmpl = str(self.download_path / f"{base_filename}.%(ext)s")
 
-        download_cmd = [
-            "yt-dlp",
-            "--ignore-errors",
-            "--cache-dir",
-            "/tmp/yt-dlp-cache",
-            "--extract-audio",
-            "--audio-format",
-            "opus",
-            "--audio-quality",
-            "0",
-            "-o",
-            str(self.download_path / f"{base_filename}.%(ext)s"),
-        ]
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": out_tmpl,
+            "quiet": True,
+            "no_warnings": True,
+            "ignoreerrors": True,
+            "cachedir": str(Path(tempfile.gettempdir()) / "yt-dlp-cache"),
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "opus",
+                    "preferredquality": "0",
+                }
+            ],
+        }
+
         if self.cookies_path:
-            download_cmd += ["--cookies", self.cookies_path]
-        download_cmd += [f"https://www.youtube.com/watch?v={video_data['id']}"]
+            ydl_opts["cookiefile"] = self.cookies_path
 
         try:
             logger.info(f"Descargando '{title}' en Opus...")
-            subprocess.run(download_cmd, check=True, capture_output=True, text=True)
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Descargar usando la URL del video
+                url = f"https://www.youtube.com/watch?v={video_data['id']}"
+                ydl.download([url])
 
             # Buscar el archivo descargado (puede tener extensión .opus o .webm)
             for ext in ["opus", "webm"]:
@@ -151,12 +175,8 @@ class YouTubeDownloader:
             logger.error(f"No se encontró archivo descargado para '{title}'")
             return None
 
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             logger.error(f"Error descargando '{title}': {e}")
-            if e.stderr:
-                logger.error(f"yt-dlp stderr: {e.stderr}")
-            if e.stdout:
-                logger.error(f"yt-dlp stdout: {e.stdout}")
             return None
 
     def _convert_to_flac(self, opus_path: Path, flac_path: Path, title: str) -> bool:

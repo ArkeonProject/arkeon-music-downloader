@@ -1,4 +1,11 @@
-# Download Music - Playlist Watcher (Python)
+# Arkeon Music Downloader
+
+[![CI](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/ci.yml)
+[![Docker](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/docker.yml/badge.svg)](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/docker.yml)
+[![CodeQL](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/codeql.yml/badge.svg)](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas canciones a FLAC con metadatos y portada, brindando una solución autónoma para mantener tu colección musical actualizada.
 
@@ -23,11 +30,15 @@ Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas
 
 - **Monitoreo continuo**: Observa periódicamente una playlist de YouTube
 - **Descarga automática**: Detecta y descarga nuevas canciones automáticamente
+- **Sincronización bidireccional**: Elimina archivos cuando se eliminan canciones de la playlist (opcional)
+- **Papelera de reciclaje**: Mueve archivos eliminados a `.trash/` para recuperación (opcional)
+- **Auto-limpieza**: Limpia automáticamente archivos antiguos de la papelera
 - **Calidad FLAC**: Convierte audio a formato FLAC sin pérdida
 - **Metadatos completos**: Añade título, artista, álbum, año y portada
 - **Nombres inteligentes**: Archivos nombrados como "Artist - Title.flac"
 - **Gestión de duplicados**: Evita re-descargas de videos ya procesados
 - **Inicio rápido**: Script automatizado para configuración y ejecución
+
 
 ## 🛠️ Tecnologías Utilizadas
 
@@ -45,8 +56,8 @@ Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas
 
 1. Clona el repositorio:
    ```bash
-   git clone https://github.com/daviilpzDev/downloadMusic.git
-   cd downloadMusic
+   git clone https://github.com/ArkeonProject/arkeon-music-downloader.git
+   cd arkeon-music-downloader
    ```
 
 2. Ejecuta el script de inicio rápido:
@@ -68,8 +79,8 @@ Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas
 
 1. Clona el repositorio:
    ```bash
-   git clone https://github.com/daviilpzDev/downloadMusic.git
-   cd downloadMusic
+   git clone https://github.com/ArkeonProject/arkeon-music-downloader.git
+   cd arkeon-music-downloader
    ```
 
 2. Instala las dependencias del sistema:
@@ -144,6 +155,36 @@ Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas
 - `LOG_LEVEL` (opcional): Nivel de logs (`INFO` por defecto)
 - `COOKIES_FILE` (opcional): Ruta a cookies para playlists privadas/restricciones
 
+#### Sincronización Bidireccional (Opcional)
+
+- `ENABLE_SYNC_DELETIONS` (opcional): Habilitar eliminación de archivos cuando se eliminan de la playlist (default: `false`)
+- `USE_TRASH_FOLDER` (opcional): Usar carpeta `.trash/` en lugar de eliminar permanentemente (default: `true`)
+- `TRASH_RETENTION_DAYS` (opcional): Días de retención en `.trash/` antes de auto-limpieza (default: `7`, `0` = nunca)
+
+> [!WARNING]
+> **Sincronización Bidireccional**: Cuando `ENABLE_SYNC_DELETIONS=true`, el watcher eliminará archivos FLAC de tu servidor cuando elimines canciones de la playlist de YouTube Music. Por defecto está deshabilitado por seguridad.
+
+> [!TIP]
+> **Papelera de Reciclaje**: Con `USE_TRASH_FOLDER=true` (default), los archivos se mueven a `.trash/` con timestamp en lugar de eliminarse permanentemente, permitiendo recuperación en caso de error.
+
+**Ejemplo de configuración:**
+```bash
+# Habilitar sincronización bidireccional
+ENABLE_SYNC_DELETIONS=true
+
+# Usar papelera de reciclaje (recomendado)
+USE_TRASH_FOLDER=true
+
+# Auto-limpiar archivos después de 7 días
+TRASH_RETENTION_DAYS=7
+```
+
+**Flujo de trabajo:**
+1. Eliminas canción de playlist → Se mueve a `.trash/Artist - Title_2025-12-01_20-30-00.flac`
+2. Durante 7 días → Puedes recuperar el archivo de `.trash/`
+3. Después de 7 días → El watcher elimina automáticamente el archivo
+
+
 ### Archivo de Configuración
 
 Para facilitar la configuración, puedes usar un archivo `.env`:
@@ -166,6 +207,19 @@ Para facilitar la configuración, puedes usar un archivo `.env`:
 - **Nombres**: `Artist - Title.flac`
 - **Metadatos**: Título, artista, álbum, año, portada embebida
 - **Calidad**: Conversión desde Opus calidad 0 (máxima)
+
+### Playlist de Testing
+
+Para probar el proyecto, puedes usar nuestra playlist pública de testing:
+
+**URL:** https://music.youtube.com/playlist?list=PLH_LluK-ePJ__EFdCYCMfPy4oZjDfZF2k
+
+Esta playlist está diseñada específicamente para testing y puedes:
+- Agregar canciones para probar descargas
+- Eliminar canciones para probar sincronización bidireccional
+- Usarla en tests de integración
+
+Ver [tests/integration/README.md](tests/integration/README.md) para más detalles.
 
 ## 📁 Estructura de Salida
 
@@ -224,11 +278,12 @@ git tag -a v3.0.2 -m "Release v3.0.2"
 git push && git push --tags
 ```
 
-3) GitHub Actions ejecuta el workflow de release:
+3) GitHub Actions ejecuta el workflow de release (`release.yml`):
 - Construye el paquete Python (`dist/*.whl`, `dist/*.tar.gz`).
 - Verifica que la versión del paquete coincide con el tag.
 - Crea la GitHub Release y adjunta artefactos.
-- Si has configurado Docker Hub, construye y publica la imagen con tags `v3.0.2` y `latest`.
+- Construye y publica la imagen Docker en **GHCR** (`ghcr.io/arkeonproject/arkeon-music-downloader`).
+- Si has configurado Docker Hub, también publica allí.
 
 ### Configurar publicación de imagen Docker (opcional)
 

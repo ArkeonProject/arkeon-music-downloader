@@ -1,0 +1,31 @@
+services:
+  youtube-watcher:
+    build:
+      context: https://github.com/ArkeonProject/arkeon-music-downloader.git#feature-16-sincronizacion-bidireccional-de-playlist
+      args:
+        YT_DLP_VERSION: ${YT_DLP_VERSION:-2025.03.31}
+    container_name: youtube-playlist-watcher-test
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - PLAYLIST_URL=${PLAYLIST_URL}
+      - DOWNLOAD_PATH=${DOWNLOAD_PATH:-/downloads}
+      - OBSERVER_INTERVAL_MS=${OBSERVER_INTERVAL_MS:-60000}
+      # Nuevas variables de sincronización bidireccional
+      - ENABLE_SYNC_DELETIONS=${ENABLE_SYNC_DELETIONS:-false}
+      - USE_TRASH_FOLDER=${USE_TRASH_FOLDER:-true}
+      - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-7}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ${HOST_DOWNLOAD_PATH:-./downloads}:/downloads
+    networks:
+      - downloader-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "sh", "-c", "yt-dlp --version >/dev/null 2>&1 && ffmpeg -version >/dev/null 2>&1" ]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+
+networks:
+  downloader-network:
+    driver: bridge

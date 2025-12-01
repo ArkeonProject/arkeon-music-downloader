@@ -40,7 +40,7 @@
 ```bash
 # Clonar y configurar
 git clone <repo>
-cd downloadMusic
+cd arkeon-music-downloader
 python -m venv venv
 source venv/bin/activate
 

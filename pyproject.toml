@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel", "setuptools_scm>=7"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "youtube-playlist-watcher"
+name = "arkeon-music-downloader"
 dynamic = ["version"]
 description = "YouTube Playlist Watcher - Descarga automática a FLAC"
 readme = "README.md"
@@ -28,6 +28,7 @@ dependencies = [
     "mutagen>=1.47.0",
     "Pillow>=10.0.0",
     "requests>=2.31.0",
+    "yt-dlp>=2023.0.0",
 ]
 
 [project.optional-dependencies]
@@ -44,9 +45,9 @@ dev = [
 youtube-watcher = "youtube_watcher.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/daviilpzDev/downloadMusic"
-Repository = "https://github.com/daviilpzDev/downloadMusic"
-Issues = "https://github.com/daviilpzDev/downloadMusic/issues"
+Homepage = "https://github.com/ArkeonProject/arkeon-music-downloader"
+Repository = "https://github.com/ArkeonProject/arkeon-music-downloader"
+Issues = "https://github.com/ArkeonProject/arkeon-music-downloader/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -77,4 +78,3 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=src --cov-report=term-missing"
-

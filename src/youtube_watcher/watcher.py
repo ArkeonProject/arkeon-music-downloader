@@ -5,6 +5,8 @@ YouTube Playlist Watcher - Clase principal para monitoreo continuo
 import logging
 import time
 import json
+import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict
 
@@ -27,6 +29,9 @@ class YouTubeWatcher:
         interval_ms: int = 60000,
         *,
         cookies_path: str | None = None,
+        enable_sync_deletions: bool = False,
+        use_trash_folder: bool = True,
+        trash_retention_days: int = 7,
     ):
         """
         Inicializar el watcher.
@@ -35,13 +40,22 @@ class YouTubeWatcher:
             playlist_url: URL de la playlist de YouTube
             download_path: Directorio donde guardar archivos FLAC
             interval_ms: Intervalo de verificación en milisegundos
+            cookies_path: Ruta al archivo de cookies
+            enable_sync_deletions: Habilitar sincronización bidireccional
+            use_trash_folder: Usar carpeta .trash en lugar de eliminar
+            trash_retention_days: Días de retención en .trash (0=nunca)
         """
         self.playlist_url = playlist_url
         self.download_path = Path(download_path)
         self._download_path_raw = download_path
         self.interval_ms = interval_ms
+        self.enable_sync_deletions = enable_sync_deletions
+        self.use_trash_folder = use_trash_folder
+        self.trash_retention_days = trash_retention_days
         self.downloaded_videos = set()
+        self.downloads = {}  # video_id -> {filename, downloaded_at, title, artist}
         self._state_file = self.download_path / ".downloaded.json"
+        self._trash_folder = self.download_path / ".trash"
 
         # Crear directorio de descargas si no existe
         self.download_path.mkdir(parents=True, exist_ok=True)
@@ -56,6 +70,11 @@ class YouTubeWatcher:
         logger.info(f"Watcher iniciado para playlist: {playlist_url}")
         logger.info(f"Directorio de descargas: {self.download_path}")
         logger.info(f"Intervalo de observación: {interval_ms}ms")
+        if self.enable_sync_deletions:
+            logger.info(
+                f"Sincronización bidireccional habilitada "
+                f"(trash={self.use_trash_folder}, retention={self.trash_retention_days}d)"
+            )
 
     def start(self):
         """Iniciar el watcher en bucle continuo"""
@@ -91,8 +110,17 @@ class YouTubeWatcher:
             # Obtener videos de la playlist
             videos = self.monitor.get_playlist_videos()
 
+            # Procesar nuevas descargas
             for video_data in videos:
                 self._process_video(video_data)
+
+            # Sincronización bidireccional: detectar eliminaciones
+            if self.enable_sync_deletions:
+                self._detect_and_remove_deleted_videos(videos)
+
+            # Auto-limpieza de carpeta .trash
+            if self.use_trash_folder and self.trash_retention_days > 0:
+                self._cleanup_trash_folder()
 
         except Exception as e:
             logger.error(f"Error verificando playlist: {e}")
@@ -113,15 +141,159 @@ class YouTubeWatcher:
         logger.info(f"Nueva canción detectada: {title}")
 
         try:
-            success = self.downloader.download_and_convert(video_data)
-            if success:
+            result = self.downloader.download_and_convert(video_data)
+            if result and result.get("success"):
+                # Guardar información de descarga
                 self.downloaded_videos.add(video_id)
+                self.downloads[video_id] = {
+                    "filename": result.get("filename", ""),
+                    "downloaded_at": datetime.now().isoformat(),
+                    "title": result.get("title", title),
+                    "artist": result.get("artist", "Unknown Artist"),
+                }
                 self._save_state()
                 logger.info(f"✅ Descarga completada: {title}")
             else:
                 logger.warning(f"Descarga fallida/omitida: {title}")
         except Exception as e:
             logger.error(f"Error descargando {title}: {e}")
+
+    def _detect_and_remove_deleted_videos(self, current_videos: list) -> None:
+        """
+        Detectar videos eliminados de la playlist y remover archivos.
+
+        Args:
+            current_videos: Lista actual de videos en la playlist
+        """
+        try:
+            # Obtener IDs de videos actuales en la playlist
+            current_video_ids = {v.get("id") for v in current_videos if v.get("id")}
+
+            # Encontrar videos que fueron descargados pero ya no están en la playlist
+            deleted_video_ids = self.downloaded_videos - current_video_ids
+
+            if not deleted_video_ids:
+                return
+
+            logger.info(
+                f"🗑️ Detectadas {len(deleted_video_ids)} canciones "
+                f"eliminadas de la playlist"
+            )
+
+            # Remover archivos de videos eliminados
+            for video_id in deleted_video_ids:
+                download_info = self.downloads.get(video_id)
+                if download_info:
+                    filename = download_info.get("filename")
+                    title = download_info.get("title", "Unknown")
+                    if filename:
+                        self._remove_file(filename, title)
+
+                # Actualizar estado
+                self.downloaded_videos.discard(video_id)
+                self.downloads.pop(video_id, None)
+
+            # Guardar estado actualizado
+            self._save_state()
+
+        except Exception as e:
+            logger.error(f"Error detectando videos eliminados: {e}")
+
+    def _remove_file(self, filename: str, title: str) -> None:
+        """
+        Remover archivo FLAC (mover a .trash o eliminar permanentemente).
+
+        Args:
+            filename: Nombre del archivo a remover
+            title: Título de la canción (para logs)
+        """
+        try:
+            file_path = self.download_path / filename
+
+            if not file_path.exists():
+                logger.warning(f"Archivo no encontrado para eliminar: {filename}")
+                return
+
+            if self.use_trash_folder:
+                # Crear carpeta .trash si no existe
+                self._trash_folder.mkdir(parents=True, exist_ok=True)
+
+                # Generar nombre con timestamp
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                name_parts = filename.rsplit(".", 1)
+                if len(name_parts) == 2:
+                    trash_filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+                else:
+                    trash_filename = f"{filename}_{timestamp}"
+
+                trash_path = self._trash_folder / trash_filename
+
+                # Mover a .trash
+                shutil.move(str(file_path), str(trash_path))
+                logger.info(f"🗑️ Movido a .trash: {title} -> {trash_filename}")
+            else:
+                # Eliminar permanentemente
+                file_path.unlink()
+                logger.info(f"❌ Eliminado permanentemente: {title}")
+
+        except Exception as e:
+            logger.error(f"Error eliminando archivo {filename}: {e}")
+
+    def _cleanup_trash_folder(self) -> None:
+        """
+        Limpiar archivos antiguos de la carpeta .trash según retención.
+        """
+        try:
+            if not self._trash_folder.exists():
+                return
+
+            now = datetime.now()
+            retention_delta = timedelta(days=self.trash_retention_days)
+            deleted_count = 0
+
+            # Iterar sobre archivos en .trash
+            for file_path in self._trash_folder.glob("*.flac"):
+                try:
+                    # Intentar extraer timestamp del nombre
+                    # Formato: Artist - Title_YYYY-MM-DD_HH-MM-SS.flac
+                    filename = file_path.stem
+                    parts = filename.rsplit("_", 2)
+
+                    if len(parts) >= 3:
+                        # Intentar parsear fecha y hora
+                        date_str = parts[-2]
+                        time_str = parts[-1]
+                        timestamp_str = f"{date_str} {time_str.replace('-', ':')}"
+
+                        try:
+                            file_date = datetime.strptime(
+                                timestamp_str, "%Y-%m-%d %H:%M:%S"
+                            )
+
+                            # Verificar si excede retención
+                            if now - file_date > retention_delta:
+                                file_path.unlink()
+                                deleted_count += 1
+                                logger.debug(
+                                    f"Auto-limpieza: eliminado {file_path.name} "
+                                    f"(edad: {(now - file_date).days} días)"
+                                )
+                        except ValueError:
+                            # No se pudo parsear timestamp, omitir
+                            logger.debug(
+                                f"No se pudo parsear timestamp de {file_path.name}"
+                            )
+                except Exception as e:
+                    logger.warning(f"Error procesando archivo {file_path.name}: {e}")
+
+            if deleted_count > 0:
+                logger.info(
+                    f"🗑️ Auto-limpieza: eliminados {deleted_count} archivos "
+                    f"de .trash/ (>{self.trash_retention_days} días)"
+                )
+
+        except Exception as e:
+            logger.error(f"Error en auto-limpieza de .trash: {e}")
 
     def download_latest_song(self):
         """Descargar únicamente la última canción de la playlist"""
@@ -158,10 +330,16 @@ class YouTubeWatcher:
             logger.info(f"Descargando última canción: {title}")
 
             try:
-                success = self.downloader.download_and_convert(latest_video)
-                if success:
+                result = self.downloader.download_and_convert(latest_video)
+                if result and result.get("success"):
                     if video_id:
                         self.downloaded_videos.add(video_id)
+                        self.downloads[video_id] = {
+                            "filename": result.get("filename", ""),
+                            "downloaded_at": datetime.now().isoformat(),
+                            "title": result.get("title", title),
+                            "artist": result.get("artist", "Unknown Artist"),
+                        }
                         self._save_state()
                     logger.info(f"✅ Descarga completada: {title}")
                     return latest_video
@@ -191,14 +369,22 @@ class YouTubeWatcher:
         try:
             if self._state_file.exists():
                 data = json.loads(self._state_file.read_text(encoding="utf-8"))
-                if isinstance(data, dict) and isinstance(data.get("video_ids"), list):
-                    self.downloaded_videos = set(str(v) for v in data["video_ids"])
+                if isinstance(data, dict):
+                    # Cargar video_ids (backward compatibility)
+                    if isinstance(data.get("video_ids"), list):
+                        self.downloaded_videos = set(str(v) for v in data["video_ids"])
+                    # Cargar downloads dict (nueva estructura)
+                    if isinstance(data.get("downloads"), dict):
+                        self.downloads = data["downloads"]
         except Exception as e:
             logger.warning(f"No se pudo cargar estado previo: {e}")
 
     def _save_state(self) -> None:
         try:
-            payload = {"video_ids": sorted(self.downloaded_videos)}
+            payload = {
+                "video_ids": sorted(self.downloaded_videos),
+                "downloads": self.downloads,
+            }
             self._state_file.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
             )
