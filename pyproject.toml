@@ -28,6 +28,7 @@ dependencies = [
     "mutagen>=1.47.0",
     "Pillow>=10.0.0",
     "requests>=2.31.0",
+    "yt-dlp>=2023.0.0",
 ]
 
 [project.optional-dependencies]
@@ -77,4 +78,3 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=src --cov-report=term-missing"
-

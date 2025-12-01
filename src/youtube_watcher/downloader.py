@@ -4,8 +4,10 @@ Downloader de YouTube - Descarga y convierte videos a FLAC
 
 import logging
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, Optional
+
 import yt_dlp
 
 from .metadata_handler import MetadataHandler
@@ -122,8 +124,6 @@ class YouTubeDownloader:
             "artist": artist,
         }
 
-
-
     def _download_opus(self, video_data: Dict, title: str) -> Optional[Path]:
         """
         Descargar audio en formato Opus.
@@ -145,20 +145,22 @@ class YouTubeDownloader:
             "quiet": True,
             "no_warnings": True,
             "ignoreerrors": True,
-            "cachedir": "/tmp/yt-dlp-cache",
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "opus",
-                "preferredquality": "0",
-            }],
+            "cachedir": str(Path(tempfile.gettempdir()) / "yt-dlp-cache"),
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "opus",
+                    "preferredquality": "0",
+                }
+            ],
         }
-        
+
         if self.cookies_path:
             ydl_opts["cookiefile"] = self.cookies_path
 
         try:
             logger.info(f"Descargando '{title}' en Opus...")
-            
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Descargar usando la URL del video
                 url = f"https://www.youtube.com/watch?v={video_data['id']}"

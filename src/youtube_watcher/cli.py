@@ -32,7 +32,7 @@ def get_environment_config():
     download_path = os.getenv("DOWNLOAD_PATH", "./downloads")
     interval_ms = int(os.getenv("OBSERVER_INTERVAL_MS", "60000"))
     cookies_path = os.getenv("COOKIES_FILE")
-    
+
     # Configuración de sincronización bidireccional
     enable_sync_deletions = os.getenv("ENABLE_SYNC_DELETIONS", "false").lower() in (
         "true",

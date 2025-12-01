@@ -284,9 +284,7 @@ class YouTubeWatcher:
                                 f"No se pudo parsear timestamp de {file_path.name}"
                             )
                 except Exception as e:
-                    logger.warning(
-                        f"Error procesando archivo {file_path.name}: {e}"
-                    )
+                    logger.warning(f"Error procesando archivo {file_path.name}: {e}")
 
             if deleted_count > 0:
                 logger.info(
