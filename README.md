@@ -23,11 +23,15 @@ Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas
 
 - **Monitoreo continuo**: Observa periódicamente una playlist de YouTube
 - **Descarga automática**: Detecta y descarga nuevas canciones automáticamente
+- **Sincronización bidireccional**: Elimina archivos cuando se eliminan canciones de la playlist (opcional)
+- **Papelera de reciclaje**: Mueve archivos eliminados a `.trash/` para recuperación (opcional)
+- **Auto-limpieza**: Limpia automáticamente archivos antiguos de la papelera
 - **Calidad FLAC**: Convierte audio a formato FLAC sin pérdida
 - **Metadatos completos**: Añade título, artista, álbum, año y portada
 - **Nombres inteligentes**: Archivos nombrados como "Artist - Title.flac"
 - **Gestión de duplicados**: Evita re-descargas de videos ya procesados
 - **Inicio rápido**: Script automatizado para configuración y ejecución
+
 
 ## 🛠️ Tecnologías Utilizadas
 
@@ -143,6 +147,36 @@ Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas
 - `OBSERVER_INTERVAL_MS` (opcional): Intervalo de verificación en milisegundos (default: `60000`)
 - `LOG_LEVEL` (opcional): Nivel de logs (`INFO` por defecto)
 - `COOKIES_FILE` (opcional): Ruta a cookies para playlists privadas/restricciones
+
+#### Sincronización Bidireccional (Opcional)
+
+- `ENABLE_SYNC_DELETIONS` (opcional): Habilitar eliminación de archivos cuando se eliminan de la playlist (default: `false`)
+- `USE_TRASH_FOLDER` (opcional): Usar carpeta `.trash/` en lugar de eliminar permanentemente (default: `true`)
+- `TRASH_RETENTION_DAYS` (opcional): Días de retención en `.trash/` antes de auto-limpieza (default: `7`, `0` = nunca)
+
+> [!WARNING]
+> **Sincronización Bidireccional**: Cuando `ENABLE_SYNC_DELETIONS=true`, el watcher eliminará archivos FLAC de tu servidor cuando elimines canciones de la playlist de YouTube Music. Por defecto está deshabilitado por seguridad.
+
+> [!TIP]
+> **Papelera de Reciclaje**: Con `USE_TRASH_FOLDER=true` (default), los archivos se mueven a `.trash/` con timestamp en lugar de eliminarse permanentemente, permitiendo recuperación en caso de error.
+
+**Ejemplo de configuración:**
+```bash
+# Habilitar sincronización bidireccional
+ENABLE_SYNC_DELETIONS=true
+
+# Usar papelera de reciclaje (recomendado)
+USE_TRASH_FOLDER=true
+
+# Auto-limpiar archivos después de 7 días
+TRASH_RETENTION_DAYS=7
+```
+
+**Flujo de trabajo:**
+1. Eliminas canción de playlist → Se mueve a `.trash/Artist - Title_2025-12-01_20-30-00.flac`
+2. Durante 7 días → Puedes recuperar el archivo de `.trash/`
+3. Después de 7 días → El watcher elimina automáticamente el archivo
+
 
 ### Archivo de Configuración
 
