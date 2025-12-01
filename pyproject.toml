@@ -44,9 +44,9 @@ dev = [
 youtube-watcher = "youtube_watcher.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/daviilpzDev/downloadMusic"
-Repository = "https://github.com/daviilpzDev/downloadMusic"
-Issues = "https://github.com/daviilpzDev/downloadMusic/issues"
+Homepage = "https://github.com/ArkeonProject/arkeon-music-downloader"
+Repository = "https://github.com/ArkeonProject/arkeon-music-downloader"
+Issues = "https://github.com/ArkeonProject/arkeon-music-downloader/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

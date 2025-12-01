@@ -56,8 +56,8 @@ Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas
 
 1. Clona el repositorio:
    ```bash
-   git clone https://github.com/daviilpzDev/downloadMusic.git
-   cd downloadMusic
+   git clone https://github.com/ArkeonProject/arkeon-music-downloader.git
+   cd arkeon-music-downloader
    ```
 
 2. Ejecuta el script de inicio rápido:
@@ -79,8 +79,8 @@ Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas
 
 1. Clona el repositorio:
    ```bash
-   git clone https://github.com/daviilpzDev/downloadMusic.git
-   cd downloadMusic
+   git clone https://github.com/ArkeonProject/arkeon-music-downloader.git
+   cd arkeon-music-downloader
    ```
 
 2. Instala las dependencias del sistema:
