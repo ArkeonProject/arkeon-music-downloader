@@ -1,4 +1,11 @@
-# Download Music - Playlist Watcher (Python)
+# Arkeon Music Downloader
+
+[![CI](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/ci.yml)
+[![Docker](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/docker.yml/badge.svg)](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/docker.yml)
+[![CodeQL](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/codeql.yml/badge.svg)](https://github.com/ArkeonProject/arkeon-music-downloader/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 Este proyecto observa una playlist de YouTube y descarga automáticamente nuevas canciones a FLAC con metadatos y portada, brindando una solución autónoma para mantener tu colección musical actualizada.
 
