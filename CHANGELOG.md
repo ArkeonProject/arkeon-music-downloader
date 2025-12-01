@@ -1,3 +1,12 @@
+# Changelog
+
+## [3.1.0](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.0.7...v3.1.0) (2025-12-01)
+
+
+### Features
+
+* **sync:** sincronizacion bidireccional de playlist ([#18](https://github.com/ArkeonProject/arkeon-music-downloader/issues/18)) ([63b6bd9](https://github.com/ArkeonProject/arkeon-music-downloader/commit/63b6bd9582e621bebe746dac727f12b317b544eb))
+
 Changelog
 
 Este proyecto sigue el formato Keep a Changelog y Semantic Versioning (SemVer).
