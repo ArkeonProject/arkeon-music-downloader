@@ -5,7 +5,7 @@ Monitor de playlist de YouTube - Obtiene información de videos
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import yt_dlp
 

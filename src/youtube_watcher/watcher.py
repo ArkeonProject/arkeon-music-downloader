@@ -8,7 +8,7 @@ import json
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 from .downloader import YouTubeDownloader
 from .playlist_monitor import PlaylistMonitor

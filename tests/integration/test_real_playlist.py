@@ -10,7 +10,6 @@ IMPORTANTE: Este test requiere conexión a internet y acceso a YouTube.
 
 import os
 import sys
-import time
 import shutil
 from pathlib import Path
 
@@ -19,7 +18,7 @@ import pytest
 # Agregar src al path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from youtube_watcher.watcher import YouTubeWatcher
+from youtube_watcher.watcher import YouTubeWatcher  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("RUN_INTEGRATION_PLAYLIST_TESTS"),
@@ -172,7 +171,7 @@ def test_integration_full_workflow():
         if response in ["s", "y", "yes", "si", "sí"]:
             shutil.rmtree(test_dir)
             print("   ✅ Directorio limpiado")
-    except:
+    except Exception:
         pass
 
     return True

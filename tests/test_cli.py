@@ -2,8 +2,6 @@ import logging
 import os
 from types import SimpleNamespace
 
-import pytest
-
 from youtube_watcher import cli
 
 
