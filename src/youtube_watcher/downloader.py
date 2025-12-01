@@ -6,6 +6,7 @@ import logging
 import subprocess
 from pathlib import Path
 from typing import Dict, Optional
+import yt_dlp
 
 from .metadata_handler import MetadataHandler
 
@@ -121,6 +122,8 @@ class YouTubeDownloader:
             "artist": artist,
         }
 
+
+
     def _download_opus(self, video_data: Dict, title: str) -> Optional[Path]:
         """
         Descargar audio en formato Opus.
@@ -133,27 +136,33 @@ class YouTubeDownloader:
             Path al archivo Opus temporal o None si falla
         """
         base_filename = f"temp_{video_data['id']}"
+        # Template de salida esperado por yt-dlp
+        out_tmpl = str(self.download_path / f"{base_filename}.%(ext)s")
 
-        download_cmd = [
-            "yt-dlp",
-            "--ignore-errors",
-            "--cache-dir",
-            "/tmp/yt-dlp-cache",
-            "--extract-audio",
-            "--audio-format",
-            "opus",
-            "--audio-quality",
-            "0",
-            "-o",
-            str(self.download_path / f"{base_filename}.%(ext)s"),
-        ]
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": out_tmpl,
+            "quiet": True,
+            "no_warnings": True,
+            "ignoreerrors": True,
+            "cachedir": "/tmp/yt-dlp-cache",
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "opus",
+                "preferredquality": "0",
+            }],
+        }
+        
         if self.cookies_path:
-            download_cmd += ["--cookies", self.cookies_path]
-        download_cmd += [f"https://www.youtube.com/watch?v={video_data['id']}"]
+            ydl_opts["cookiefile"] = self.cookies_path
 
         try:
             logger.info(f"Descargando '{title}' en Opus...")
-            subprocess.run(download_cmd, check=True, capture_output=True, text=True)
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Descargar usando la URL del video
+                url = f"https://www.youtube.com/watch?v={video_data['id']}"
+                ydl.download([url])
 
             # Buscar el archivo descargado (puede tener extensión .opus o .webm)
             for ext in ["opus", "webm"]:
@@ -164,12 +173,8 @@ class YouTubeDownloader:
             logger.error(f"No se encontró archivo descargado para '{title}'")
             return None
 
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             logger.error(f"Error descargando '{title}': {e}")
-            if e.stderr:
-                logger.error(f"yt-dlp stderr: {e.stderr}")
-            if e.stdout:
-                logger.error(f"yt-dlp stdout: {e.stdout}")
             return None
 
     def _convert_to_flac(self, opus_path: Path, flac_path: Path, title: str) -> bool:

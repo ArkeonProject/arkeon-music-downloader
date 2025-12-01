@@ -147,13 +147,14 @@ class TestPlaylistMonitor:
         monitor = PlaylistMonitor("https://example.com")
         assert monitor.playlist_url == "https://example.com"
 
-    @patch("subprocess.run")
-    def test_get_playlist_videos_success(self, mock_run):
+    @patch("yt_dlp.YoutubeDL")
+    def test_get_playlist_videos_success(self, mock_ydl_class):
         """Test de obtención exitosa de videos"""
-        mock_result = Mock()
-        mock_result.stdout = '{"id": "123", "title": "Test Video"}'
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
+        # Configurar el mock del context manager
+        mock_ydl = mock_ydl_class.return_value.__enter__.return_value
+        mock_ydl.extract_info.return_value = {
+            "entries": [{"id": "123", "title": "Test Video"}]
+        }
 
         monitor = PlaylistMonitor("https://example.com")
         videos = monitor.get_playlist_videos()
@@ -162,10 +163,12 @@ class TestPlaylistMonitor:
         assert videos[0]["id"] == "123"
         assert videos[0]["title"] == "Test Video"
 
-    @patch("subprocess.run")
-    def test_get_playlist_videos_failure(self, mock_run):
+    @patch("yt_dlp.YoutubeDL")
+    def test_get_playlist_videos_failure(self, mock_ydl_class):
         """Test de fallo en obtención de videos"""
-        mock_run.side_effect = Exception("yt-dlp error")
+        # Configurar el mock del context manager
+        mock_ydl = mock_ydl_class.return_value.__enter__.return_value
+        mock_ydl.extract_info.side_effect = Exception("yt-dlp error")
 
         monitor = PlaylistMonitor("https://example.com")
         videos = monitor.get_playlist_videos()

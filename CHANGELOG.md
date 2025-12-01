@@ -20,6 +20,8 @@ Cómo publicar una versión
 - Added: Argumentos CLI --enable-sync-deletions, --disable-trash y --trash-retention-days
 - Changed: downloader.download_and_convert() ahora retorna dict con metadata en lugar de bool
 - Changed: Estado persistente (.downloaded.json) ahora incluye mapeo de video_id a filename y metadata
+- Changed: Refactorización interna para usar librería `yt_dlp` nativa en lugar de `subprocess`
+- Added: Configuración de pre-commit hooks (.pre-commit-config.yaml)
 - Fixed:
 
 
