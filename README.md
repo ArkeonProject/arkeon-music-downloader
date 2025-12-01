@@ -208,6 +208,19 @@ Para facilitar la configuración, puedes usar un archivo `.env`:
 - **Metadatos**: Título, artista, álbum, año, portada embebida
 - **Calidad**: Conversión desde Opus calidad 0 (máxima)
 
+### Playlist de Testing
+
+Para probar el proyecto, puedes usar nuestra playlist pública de testing:
+
+**URL:** https://music.youtube.com/playlist?list=PLH_LluK-ePJ__EFdCYCMfPy4oZjDfZF2k
+
+Esta playlist está diseñada específicamente para testing y puedes:
+- Agregar canciones para probar descargas
+- Eliminar canciones para probar sincronización bidireccional
+- Usarla en tests de integración
+
+Ver [tests/integration/README.md](tests/integration/README.md) para más detalles.
+
 ## 📁 Estructura de Salida
 
 ```
