@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libfreetype6-dev \
     liblcms2-dev \
-    libtiff5 \
+    libtiff-dev \
     libwebp-dev \
     libopenjp2-7 \
     && rm -rf /var/lib/apt/lists/*
