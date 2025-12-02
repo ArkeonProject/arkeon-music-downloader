@@ -128,17 +128,22 @@ class YouTubeWatcher:
     def _process_video(self, video_data: Dict):
         """Procesar un video individual"""
         video_id = video_data.get("id")
-        title = video_data.get("title", "Unknown Title")
+        raw_title = video_data.get("title")
+        title = str(raw_title) if raw_title is not None else ""
 
-        if not video_id:
-            logger.warning(f"No se encontró ID para: {title}")
+        if not video_id or not title.strip() or "[Deleted" in title:
+            logger.warning(
+                f"Saltando entrada inválida: title={raw_title}, video_id={video_id}"
+            )
             return
+
+        display_title = title or "Unknown Title"
 
         # Verificar si ya se descargó
         if video_id in self.downloaded_videos:
             return
 
-        logger.info(f"Nueva canción detectada: {title}")
+        logger.info(f"Nueva canción detectada: {display_title}")
 
         try:
             result = self.downloader.download_and_convert(video_data)
@@ -148,15 +153,15 @@ class YouTubeWatcher:
                 self.downloads[video_id] = {
                     "filename": result.get("filename", ""),
                     "downloaded_at": datetime.now().isoformat(),
-                    "title": result.get("title", title),
+                    "title": result.get("title", display_title),
                     "artist": result.get("artist", "Unknown Artist"),
                 }
                 self._save_state()
-                logger.info(f"✅ Descarga completada: {title}")
+                logger.info(f"✅ Descarga completada: {display_title}")
             else:
-                logger.warning(f"Descarga fallida/omitida: {title}")
+                logger.warning(f"Descarga fallida/omitida: {display_title}")
         except Exception as e:
-            logger.error(f"Error descargando {title}: {e}")
+            logger.error(f"Error descargando {display_title}: {e}")
 
     def _detect_and_remove_deleted_videos(self, current_videos: list) -> None:
         """
@@ -321,13 +326,23 @@ class YouTubeWatcher:
             except Exception:
                 pass
             video_id = latest_video.get("id")
-            title = latest_video.get("title", "Unknown Title")
+            raw_title = latest_video.get("title")
+            title = str(raw_title) if raw_title is not None else ""
 
-            if not video_id:
-                logger.warning(f"No se encontró ID para: {title}")
+            if not video_id or not title.strip() or "[Deleted" in title:
+                logger.warning(
+                    f"Saltando entrada inválida en última canción: "
+                    f"title={raw_title}, video_id={video_id}"
+                )
                 return None
 
-            logger.info(f"Descargando última canción: {title}")
+            display_title = title or "Unknown Title"
+
+            if not video_id:
+                logger.warning(f"No se encontró ID para: {display_title}")
+                return None
+
+            logger.info(f"Descargando última canción: {display_title}")
 
             try:
                 result = self.downloader.download_and_convert(latest_video)
@@ -337,17 +352,17 @@ class YouTubeWatcher:
                         self.downloads[video_id] = {
                             "filename": result.get("filename", ""),
                             "downloaded_at": datetime.now().isoformat(),
-                            "title": result.get("title", title),
+                            "title": result.get("title", display_title),
                             "artist": result.get("artist", "Unknown Artist"),
                         }
                         self._save_state()
-                    logger.info(f"✅ Descarga completada: {title}")
+                    logger.info(f"✅ Descarga completada: {display_title}")
                     return latest_video
                 else:
-                    logger.warning(f"Descarga fallida/omitida: {title}")
+                    logger.warning(f"Descarga fallida/omitida: {display_title}")
                     return None
             except Exception as e:
-                logger.error(f"Error descargando {title}: {e}")
+                logger.error(f"Error descargando {display_title}: {e}")
                 return None
 
         except Exception as e:

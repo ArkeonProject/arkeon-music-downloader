@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.1](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.0...v3.1.1) (2025-12-02)
+
+
+### Fixed
+
+* **watcher:** saltar entradas fantasma/invalidas sin `title` o `video_id` para evitar fallos al descargar (NoneType.replace)
+
+
 ## [3.1.0](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.0.7...v3.1.0) (2025-12-01)
 
 
@@ -20,6 +28,9 @@ Cómo publicar una versión
 1) En “Unreleased”, lista los cambios hechos. Cuando cortes versión, muévelos a una nueva sección `X.Y.Z - YYYY-MM-DD`.
 2) Crea el tag Git `vX.Y.Z` y haz push. La versión del paquete se deriva del tag vía `setuptools_scm`.
 3) El workflow de GitHub Actions crea la Release, adjunta artefactos y (opcional) publica la imagen Docker.
+
+3.1.1 - 2025-12-02
+- Fixed: El watcher ahora ignora entradas fantasma/invalidas (sin título/ID o marcadas como [Deleted]) para evitar excepciones al descargar.
 
 3.1.0 - 2025-12-01
 - Added: Sincronización bidireccional - detecta y elimina archivos cuando se eliminan canciones de la playlist
