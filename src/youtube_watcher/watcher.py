@@ -137,9 +137,7 @@ class YouTubeWatcher:
 
     def _process_video(self, video_data: Dict):
         """Procesar un video individual"""
-        video_id, raw_title, title, is_invalid = self._normalize_video_entry(
-            video_data
-        )
+        video_id, raw_title, title, is_invalid = self._normalize_video_entry(video_data)
 
         if is_invalid:
             logger.warning(
