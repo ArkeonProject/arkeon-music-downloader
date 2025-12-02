@@ -3,6 +3,13 @@
 ## [3.1.1](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.0...v3.1.1) (2025-12-02)
 
 
+### Bug Fixes
+
+* skip invalid playlist entries ([#25](https://github.com/ArkeonProject/arkeon-music-downloader/issues/25)) ([5499326](https://github.com/ArkeonProject/arkeon-music-downloader/commit/54993266dd70f5ebd7ce6976fe4cd2f56f6fb51c))
+
+## [3.1.1](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.0...v3.1.1) (2025-12-02)
+
+
 ### Fixed
 
 * **watcher:** saltar entradas fantasma/invalidas sin `title` o `video_id` para evitar fallos al descargar (NoneType.replace)
