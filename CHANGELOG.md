@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.2](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.1...v3.1.2) (2025-12-02)
+
+
+### Bug Fixes
+
+* hydrate downloaded_videos from downloads state ([#27](https://github.com/ArkeonProject/arkeon-music-downloader/issues/27)) ([cc2daa3](https://github.com/ArkeonProject/arkeon-music-downloader/commit/cc2daa3d261bf93aff2406a95c3b4b3722897a46))
+
 ## [3.1.1](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.0...v3.1.1) (2025-12-02)
 
 
