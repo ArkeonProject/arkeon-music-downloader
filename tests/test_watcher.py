@@ -128,6 +128,28 @@ class TestYouTubeWatcher:
         assert "vid2" not in watcher.downloads
         watcher._save_state.assert_called_once()
 
+    def test_detect_deleted_videos_ignores_invalid_entries(self):
+        """Entradas inválidas ([Deleted], sin título) se tratan como ausentes"""
+        watcher = YouTubeWatcher(
+            "https://example.com", "./test_downloads", enable_sync_deletions=True
+        )
+
+        watcher.downloaded_videos = {"vid1"}
+        watcher.downloads = {"vid1": {"filename": "song.flac", "title": "Song"}}
+
+        # Playlist actual trae entrada inválida con el mismo ID
+        current_videos = [{"id": "vid1", "title": "[Deleted video]"}]
+
+        watcher._remove_file = Mock()
+        watcher._save_state = Mock()
+
+        watcher._detect_and_remove_deleted_videos(current_videos)
+
+        watcher._remove_file.assert_called_once_with("song.flac", "Song")
+        assert "vid1" not in watcher.downloaded_videos
+        assert "vid1" not in watcher.downloads
+        watcher._save_state.assert_called_once()
+
     @patch("shutil.move")
     @patch("pathlib.Path.exists")
     def test_remove_file_trash(self, mock_exists, mock_move):
