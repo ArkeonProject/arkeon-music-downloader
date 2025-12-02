@@ -391,6 +391,8 @@ class YouTubeWatcher:
                     # Cargar downloads dict (nueva estructura)
                     if isinstance(data.get("downloads"), dict):
                         self.downloads = data["downloads"]
+                        # Garantizar que downloaded_videos incluya claves de downloads
+                        self.downloaded_videos.update(self.downloads.keys())
         except Exception as e:
             logger.warning(f"No se pudo cargar estado previo: {e}")
 
