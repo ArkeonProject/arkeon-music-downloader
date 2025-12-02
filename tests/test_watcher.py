@@ -4,6 +4,7 @@ Tests para YouTube Playlist Watcher
 
 import pytest
 from pathlib import Path
+import json
 from unittest.mock import Mock, patch
 
 from youtube_watcher.watcher import YouTubeWatcher
