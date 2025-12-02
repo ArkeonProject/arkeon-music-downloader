@@ -67,6 +67,26 @@ class TestYouTubeWatcher:
         assert watcher.trash_retention_days == 7
         assert len(watcher.downloaded_videos) == 0
 
+    def test_load_state_populates_downloaded_videos_from_downloads(self, tmp_path):
+        """Debe cargar downloaded_videos desde las claves de downloads si falta video_ids"""
+        state_file = tmp_path / ".downloaded.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "downloads": {
+                        "vid1": {"filename": "a.flac"},
+                        "vid2": {"filename": "b.flac"},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        watcher = YouTubeWatcher("https://example.com", str(tmp_path))
+
+        assert watcher.downloads.keys() == {"vid1", "vid2"}
+        assert watcher.downloaded_videos == {"vid1", "vid2"}
+
     def test_get_stats(self):
         """Test de obtención de estadísticas"""
         watcher = YouTubeWatcher("https://example.com", "./test_downloads")
