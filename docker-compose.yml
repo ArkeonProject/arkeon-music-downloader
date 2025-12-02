@@ -11,6 +11,11 @@ services:
       - PLAYLIST_URL=${PLAYLIST_URL}
       - DOWNLOAD_PATH=${DOWNLOAD_PATH:-/downloads}
       - OBSERVER_INTERVAL_MS=${OBSERVER_INTERVAL_MS:-60000}
+      # Sincronización bidireccional (opcional)
+      - ENABLE_SYNC_DELETIONS=${ENABLE_SYNC_DELETIONS:-false}
+      - USE_TRASH_FOLDER=${USE_TRASH_FOLDER:-true}
+      - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-7}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # - COOKIES_FILE=${COOKIES_FILE}
     volumes:
       - ${HOST_DOWNLOAD_PATH:-./downloads}:/downloads
