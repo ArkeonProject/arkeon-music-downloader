@@ -125,13 +125,23 @@ class YouTubeWatcher:
         except Exception as e:
             logger.error(f"Error verificando playlist: {e}")
 
-    def _process_video(self, video_data: Dict):
-        """Procesar un video individual"""
-        video_id = video_data.get("id")
+    def _normalize_video_entry(self, video_data: Dict):
+        """
+        Normalizar título/ID y determinar si la entrada es válida.
+        """
         raw_title = video_data.get("title")
         title = str(raw_title) if raw_title is not None else ""
+        video_id = video_data.get("id")
+        is_invalid = not video_id or not title.strip() or "[Deleted" in title
+        return video_id, raw_title, title, is_invalid
 
-        if not video_id or not title.strip() or "[Deleted" in title:
+    def _process_video(self, video_data: Dict):
+        """Procesar un video individual"""
+        video_id, raw_title, title, is_invalid = self._normalize_video_entry(
+            video_data
+        )
+
+        if is_invalid:
             logger.warning(
                 f"Saltando entrada inválida: title={raw_title}, video_id={video_id}"
             )
@@ -171,8 +181,20 @@ class YouTubeWatcher:
             current_videos: Lista actual de videos en la playlist
         """
         try:
-            # Obtener IDs de videos actuales en la playlist
-            current_video_ids = {v.get("id") for v in current_videos if v.get("id")}
+            # Obtener IDs válidos de videos actuales en la playlist
+            current_video_ids = set()
+            for video_data in current_videos:
+                video_id, raw_title, title, is_invalid = self._normalize_video_entry(
+                    video_data
+                )
+                if is_invalid:
+                    # Si la entrada es inválida la tratamos como ausente para sync
+                    logger.debug(
+                        f"Ignorando entrada inválida en sync: "
+                        f"title={raw_title}, video_id={video_id}"
+                    )
+                    continue
+                current_video_ids.add(video_id)
 
             # Encontrar videos que fueron descargados pero ya no están en la playlist
             deleted_video_ids = self.downloaded_videos - current_video_ids
@@ -325,11 +347,11 @@ class YouTubeWatcher:
                     )
             except Exception:
                 pass
-            video_id = latest_video.get("id")
-            raw_title = latest_video.get("title")
-            title = str(raw_title) if raw_title is not None else ""
+            video_id, raw_title, title, is_invalid = self._normalize_video_entry(
+                latest_video
+            )
 
-            if not video_id or not title.strip() or "[Deleted" in title:
+            if is_invalid:
                 logger.warning(
                     f"Saltando entrada inválida en última canción: "
                     f"title={raw_title}, video_id={video_id}"
