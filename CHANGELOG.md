@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.3](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.2...v3.1.3) (2025-12-02)
+
+
+### Bug Fixes
+
+* **sync:** treat invalid playlist entries as removed ([ff1cb19](https://github.com/ArkeonProject/arkeon-music-downloader/commit/ff1cb196a120ce5469b2096abcd3726a7433d596))
+
 ## [3.1.2](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.1...v3.1.2) (2025-12-02)
 
 
