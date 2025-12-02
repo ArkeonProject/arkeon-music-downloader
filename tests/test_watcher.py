@@ -37,6 +37,17 @@ class TestYouTubeWatcher:
         assert watcher.downloads["abc123"]["filename"].endswith(".flac")
         watcher._save_state.assert_called_once()
 
+    def test_process_video_skips_invalid_entries(self, tmp_path, monkeypatch):
+        watcher = YouTubeWatcher("https://example.com", str(tmp_path))
+        watcher.downloader.download_and_convert = Mock()
+
+        watcher._process_video({"id": None, "title": None})
+        watcher._process_video({"id": "abc", "title": "[Deleted video]"})
+        watcher._process_video({"id": "def", "title": "   "})
+
+        assert len(watcher.downloaded_videos) == 0
+        watcher.downloader.download_and_convert.assert_not_called()
+
     def test_init(self):
         """Test de inicialización"""
         watcher = YouTubeWatcher(
