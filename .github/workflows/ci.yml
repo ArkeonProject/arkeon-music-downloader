@@ -16,7 +16,7 @@ jobs:
 
       # Node projects (auto-detect)
       - name: 🧰 Setup Node.js
-        if: exists('package.json')
+        if: hashFiles('package.json')
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -24,16 +24,16 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: 📦 Install PNPM
-        if: exists('package.json')
+        if: hashFiles('package.json')
         run: npm install -g pnpm@10 --force
 
       - name: 📦 Install dependencies (Node)
-        if: exists('package.json')
+        if: hashFiles('package.json')
         run: pnpm install --frozen-lockfile
 
       # Python projects (auto-detect)
       - name: 🐍 Setup Python
-        if: exists('pyproject.toml') || exists('requirements.txt')
+        if: hashFiles('pyproject.toml') || hashFiles('requirements.txt')
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -41,26 +41,26 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: 📦 Install dependencies (Python)
-        if: exists('pyproject.toml') || exists('requirements.txt')
+        if: hashFiles('pyproject.toml') || hashFiles('requirements.txt')
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]" || pip install -r requirements.txt
 
       # Lint / Tests
       - name: 🧪 Run tests (Node)
-        if: exists('package.json')
+        if: hashFiles('package.json')
         run: pnpm test || echo "Skipping tests"
 
       - name: 🧪 Run tests (Python)
-        if: exists('pyproject.toml') || exists('requirements.txt')
+        if: hashFiles('pyproject.toml') || hashFiles('requirements.txt')
         run: pytest --maxfail=1 --disable-warnings || true
 
       - name: 🧱 Build (Node)
-        if: exists('package.json')
+        if: hashFiles('package.json')
         run: pnpm run build || echo "Skipping build"
 
       - name: 📦 Build (Python)
-        if: exists('pyproject.toml')
+        if: hashFiles('pyproject.toml')
         run: python -m build || echo "Skipping python build"
 
       - name: 📊 Upload build artifacts
