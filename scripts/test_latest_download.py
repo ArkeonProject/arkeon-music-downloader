@@ -13,7 +13,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from youtube_watcher.watcher import YouTubeWatcher
+from youtube_watcher.watcher import YouTubeWatcher  # noqa: E402
 
 
 def main():
