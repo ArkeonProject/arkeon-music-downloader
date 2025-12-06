@@ -3,8 +3,14 @@ on:
   push:
     branches: [develop]
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
 
 jobs:
   ci:
-    uses: ArkeonProject/organization-tools/.github/workflows/ci-python.yml@main
+    name: Continuous Integration
+    uses: ArkeonProject/organization-tools/.github/workflows/ci-python.yml@v1.0.2
+    with:
+      python-version: '3.11'
+      run-lint: true
+      run-tests: true
+    secrets: inherit

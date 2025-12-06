@@ -1,0 +1,22 @@
+name: Hotfix
+on:
+  workflow_dispatch:
+    inputs:
+      description:
+        description: 'Hotfix description'
+        required: true
+        type: string
+      issue-number:
+        description: 'Related issue number'
+        required: false
+        type: string
+
+jobs:
+  create-hotfix:
+    name: Create Hotfix
+    uses: ArkeonProject/organization-tools/.github/workflows/hotfix-create.yml@v1.0.2
+    with:
+      description: ${{ github.event.inputs.description }}
+      issue-number: ${{ github.event.inputs.issue-number }}
+      project-type: 'python'
+    secrets: inherit
