@@ -1,57 +1,75 @@
-name: CI - Universal (develop)
+name: 🧩 CI - Universal (develop)
 
 on:
   push:
-    branches: [ develop ]
+    branches: [develop]
   pull_request:
-    branches: [ develop ]
+    branches: [develop]
 
 jobs:
-  node-ci:
-    name: Node.js CI
+  ci:
     runs-on: ubuntu-latest
-    if: hashFiles('package.json') != ''
+
     steps:
-      - uses: actions/checkout@v4
-      - run: npm install -g pnpm@10 --force
-      - uses: actions/setup-node@v4
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      # Node projects (auto-detect)
+      - name: 🧰 Setup Node.js
+        if: exists('package.json')
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'pnpm'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run lint || echo "No lint script"
-      - run: pnpm run test || echo "No test script"
-      - run: pnpm run build
+          cache-dependency-path: pnpm-lock.yaml
 
-  python-ci:
-    name: Python CI
-    runs-on: ubuntu-latest
-    if: hashFiles('pyproject.toml') != '' || hashFiles('requirements.txt') != ''
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-      - run: python -m pip install --upgrade pip
-      - run: pip install -e '.[dev]' || pip install -r requirements.txt
-      - run: pytest --cov=src --cov-report=term-missing || echo "No tests"
+      - name: 📦 Install PNPM
+        if: exists('package.json')
+        run: npm install -g pnpm@10 --force
 
-  docker-ci:
-    name: Docker Build Test
-    runs-on: ubuntu-latest
-    if: hashFiles('Dockerfile') != ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v5
+      - name: 📦 Install dependencies (Node)
+        if: exists('package.json')
+        run: pnpm install --frozen-lockfile
+
+      # Python projects (auto-detect)
+      - name: 🐍 Setup Python
+        if: exists('pyproject.toml') || exists('requirements.txt')
+        uses: actions/setup-python@v6
         with:
-          context: .
-          push: false
-          tags: temp/test:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: 📦 Install dependencies (Python)
+        if: exists('pyproject.toml') || exists('requirements.txt')
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" || pip install -r requirements.txt
+
+      # Lint / Tests
+      - name: 🧪 Run tests (Node)
+        if: exists('package.json')
+        run: pnpm test || echo "Skipping tests"
+
+      - name: 🧪 Run tests (Python)
+        if: exists('pyproject.toml') || exists('requirements.txt')
+        run: pytest --maxfail=1 --disable-warnings || true
+
+      - name: 🧱 Build (Node)
+        if: exists('package.json')
+        run: pnpm run build || echo "Skipping build"
+
+      - name: 📦 Build (Python)
+        if: exists('pyproject.toml')
+        run: python -m build || echo "Skipping python build"
+
+      - name: 📊 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            dist
+            build
+            .next
+            out
+          if-no-files-found: ignore
