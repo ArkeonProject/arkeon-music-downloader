@@ -1,0 +1,14 @@
+name: CD
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Build and Push Docker
+    uses: ArkeonProject/organization-tools/.github/workflows/cd-python-docker.yml@v1.0.2
+    with:
+      image-name: 'arkeon-music-downloader'
+      push-to-ghcr: true
+      run-tests: true
+    secrets: inherit
