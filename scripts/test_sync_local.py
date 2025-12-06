@@ -8,7 +8,6 @@ Uso: python3 scripts/test_sync_local.py
 
 import json
 import sys
-import os
 from pathlib import Path
 from datetime import datetime
 
@@ -89,7 +88,7 @@ def test_deletion_detection():
         trash_retention_days=7,
     )
     
-    print(f"\n📊 Estado inicial:")
+    print("\n📊 Estado inicial:")
     print(f"   Videos descargados: {len(watcher.downloaded_videos)}")
     print(f"   Archivos FLAC: {len(list(download_path.glob('*.flac')))}")
     
@@ -100,13 +99,13 @@ def test_deletion_detection():
         # video3 eliminado
     ]
     
-    print(f"\n🔍 Simulando playlist actual (2 videos)...")
+    print("\n🔍 Simulando playlist actual (2 videos)...")
     print(f"   Videos en playlist: {len(current_videos)}")
     
     # Detectar eliminaciones
     watcher._detect_and_remove_deleted_videos(current_videos)
     
-    print(f"\n📊 Estado después de detección:")
+    print("\n📊 Estado después de detección:")
     print(f"   Videos descargados: {len(watcher.downloaded_videos)}")
     print(f"   Archivos FLAC: {len(list(download_path.glob('*.flac')))}")
     
@@ -121,7 +120,7 @@ def test_deletion_detection():
     # Verificar estado
     state_file = download_path / ".downloaded.json"
     state = json.loads(state_file.read_text())
-    print(f"\n💾 Estado persistente:")
+    print("\n💾 Estado persistente:")
     print(f"   video_ids: {state['video_ids']}")
     print(f"   downloads keys: {list(state['downloads'].keys())}")
     
@@ -155,7 +154,7 @@ def test_trash_cleanup():
     recent_file = trash_folder / f"RecentSong_{recent_timestamp}.flac"
     recent_file.write_text("recent content")
     
-    print(f"\n📁 Archivos en .trash/ antes de limpieza:")
+    print("\n📁 Archivos en .trash/ antes de limpieza:")
     for f in trash_folder.glob("*.flac"):
         print(f"   - {f.name}")
     
@@ -169,10 +168,10 @@ def test_trash_cleanup():
         trash_retention_days=7,  # 7 días de retención
     )
     
-    print(f"\n🧹 Ejecutando auto-limpieza (retención: 7 días)...")
+    print("\n🧹 Ejecutando auto-limpieza (retención: 7 días)...")
     watcher._cleanup_trash_folder()
     
-    print(f"\n📁 Archivos en .trash/ después de limpieza:")
+    print("\n📁 Archivos en .trash/ después de limpieza:")
     remaining_files = list(trash_folder.glob("*.flac"))
     for f in remaining_files:
         print(f"   - {f.name}")
@@ -226,7 +225,7 @@ def main():
             response = input().lower()
             if response in ['s', 'y', 'yes', 'si', 'sí']:
                 cleanup_test_environment()
-        except:
+        except (EOFError, KeyboardInterrupt):
             pass
 
 
