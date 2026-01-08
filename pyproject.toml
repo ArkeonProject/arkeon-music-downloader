@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arkeon-music-downloader"
-dynamic = ["version"]
+version = "3.1.4"
+dynamic = ["readme"]
 description = "YouTube Playlist Watcher - Descarga automática a FLAC"
 readme = "README.md"
 license = {text = "MIT"}
