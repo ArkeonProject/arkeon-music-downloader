@@ -54,6 +54,12 @@ class YouTubeWatcher:
         self.trash_retention_days = trash_retention_days
         self.downloaded_videos = set()
         self.downloads = {}  # video_id -> {filename, downloaded_at, title, artist}
+        self.failed_downloads = (
+            {}
+        )  # video_id -> {reason, failed_at, title, retry_count}
+        self._failed_retry_hours = (
+            24  # Reintentar descargas fallidas después de X horas
+        )
         self._state_file = self.download_path / ".downloaded.json"
         self._trash_folder = self.download_path / ".trash"
 
@@ -151,6 +157,25 @@ class YouTubeWatcher:
         if video_id in self.downloaded_videos:
             return
 
+        # Verificar si ya falló recientemente (no reintentar hasta pasadas X horas)
+        if video_id in self.failed_downloads:
+            failed_info = self.failed_downloads[video_id]
+            failed_at_str = failed_info.get("failed_at", "")
+            try:
+                failed_at = datetime.fromisoformat(failed_at_str)
+                hours_since_fail = (datetime.now() - failed_at).total_seconds() / 3600
+                if hours_since_fail < self._failed_retry_hours:
+                    # Silenciosamente omitir, ya intentamos recientemente
+                    return
+                else:
+                    # Ha pasado suficiente tiempo, reintentar
+                    logger.info(
+                        f"🔄 Reintentando descarga fallida: {display_title} "
+                        f"(último intento hace {hours_since_fail:.1f}h)"
+                    )
+            except (ValueError, TypeError):
+                pass  # Si no podemos parsear la fecha, reintentar
+
         logger.info(f"Nueva canción detectada: {display_title}")
 
         try:
@@ -164,12 +189,42 @@ class YouTubeWatcher:
                     "title": result.get("title", display_title),
                     "artist": result.get("artist", "Unknown Artist"),
                 }
+                # Limpiar de fallidos si estaba ahí
+                self.failed_downloads.pop(video_id, None)
                 self._save_state()
                 logger.info(f"✅ Descarga completada: {display_title}")
             else:
-                logger.warning(f"Descarga fallida/omitida: {display_title}")
+                # Registrar como descarga fallida
+                retry_count = (
+                    self.failed_downloads.get(video_id, {}).get("retry_count", 0) + 1
+                )
+                self.failed_downloads[video_id] = {
+                    "title": display_title,
+                    "reason": "download_failed",
+                    "failed_at": datetime.now().isoformat(),
+                    "retry_count": retry_count,
+                }
+                self._save_state()
+                logger.warning(
+                    f"⚠️ Descarga fallida: {display_title} "
+                    f"(intento #{retry_count}, próximo reintento en {self._failed_retry_hours}h)"
+                )
         except Exception as e:
-            logger.error(f"Error descargando {display_title}: {e}")
+            # Registrar como descarga fallida por excepción
+            retry_count = (
+                self.failed_downloads.get(video_id, {}).get("retry_count", 0) + 1
+            )
+            self.failed_downloads[video_id] = {
+                "title": display_title,
+                "reason": str(e),
+                "failed_at": datetime.now().isoformat(),
+                "retry_count": retry_count,
+            }
+            self._save_state()
+            logger.error(
+                f"❌ Error descargando {display_title}: {e} "
+                f"(intento #{retry_count}, próximo reintento en {self._failed_retry_hours}h)"
+            )
 
     def _detect_and_remove_deleted_videos(self, current_videos: list) -> None:
         """
@@ -194,10 +249,35 @@ class YouTubeWatcher:
                     continue
                 current_video_ids.add(video_id)
 
+            # === SAFETY CHECK: Protección contra respuestas incompletas ===
+            # Si YouTube devuelve muy pocos videos, probablemente es un error
+            total_downloaded = len(self.downloaded_videos)
+            total_current = len(current_video_ids)
+
+            # Si la playlist actual tiene menos del 80% de los videos descargados,
+            # probablemente YouTube devolvió una respuesta incompleta
+            if total_downloaded > 0 and total_current < total_downloaded * 0.8:
+                logger.warning(
+                    f"⚠️ Sync ignorado: YouTube devolvió {total_current} videos "
+                    f"pero tenemos {total_downloaded} descargados. "
+                    f"Posible respuesta incompleta de YouTube."
+                )
+                return
+
             # Encontrar videos que fueron descargados pero ya no están en la playlist
             deleted_video_ids = self.downloaded_videos - current_video_ids
 
             if not deleted_video_ids:
+                return
+
+            # === SAFETY CHECK: No eliminar más del 10% de videos de golpe ===
+            deletion_threshold = max(5, int(total_downloaded * 0.1))
+            if len(deleted_video_ids) > deletion_threshold:
+                logger.warning(
+                    f"⚠️ Sync ignorado: {len(deleted_video_ids)} videos marcados "
+                    f"como eliminados (umbral: {deletion_threshold}). "
+                    f"Esto parece un error de YouTube, no una eliminación real."
+                )
                 return
 
             logger.info(
@@ -275,10 +355,14 @@ class YouTubeWatcher:
             now = datetime.now()
             retention_delta = timedelta(days=self.trash_retention_days)
             deleted_count = 0
+            total_files = 0
 
             # Iterar sobre archivos en .trash
             for file_path in self._trash_folder.glob("*.flac"):
+                total_files += 1
                 try:
+                    file_date = None
+
                     # Intentar extraer timestamp del nombre
                     # Formato: Artist - Title_YYYY-MM-DD_HH-MM-SS.flac
                     filename = file_path.stem
@@ -294,20 +378,32 @@ class YouTubeWatcher:
                             file_date = datetime.strptime(
                                 timestamp_str, "%Y-%m-%d %H:%M:%S"
                             )
-
-                            # Verificar si excede retención
-                            if now - file_date > retention_delta:
-                                file_path.unlink()
-                                deleted_count += 1
-                                logger.debug(
-                                    f"Auto-limpieza: eliminado {file_path.name} "
-                                    f"(edad: {(now - file_date).days} días)"
-                                )
                         except ValueError:
-                            # No se pudo parsear timestamp, omitir
                             logger.debug(
-                                f"No se pudo parsear timestamp de {file_path.name}"
+                                f"No se pudo parsear timestamp de {file_path.name}, "
+                                f"usando mtime como fallback"
                             )
+
+                    # Fallback: usar fecha de modificación del archivo
+                    if file_date is None:
+                        file_date = datetime.fromtimestamp(file_path.stat().st_mtime)
+
+                    file_age_days = (now - file_date).days
+
+                    # Verificar si excede retención
+                    if now - file_date > retention_delta:
+                        file_path.unlink()
+                        deleted_count += 1
+                        logger.info(
+                            f"🗑️ Auto-limpieza: eliminado {file_path.name} "
+                            f"(edad: {file_age_days} días)"
+                        )
+                    else:
+                        logger.debug(
+                            f"Manteniendo {file_path.name} "
+                            f"(edad: {file_age_days} días, retención: {self.trash_retention_days} días)"
+                        )
+
                 except Exception as e:
                     logger.warning(f"Error procesando archivo {file_path.name}: {e}")
 
@@ -413,6 +509,12 @@ class YouTubeWatcher:
                         self.downloads = data["downloads"]
                         # Garantizar que downloaded_videos incluya claves de downloads
                         self.downloaded_videos.update(self.downloads.keys())
+                    # Cargar failed_downloads dict
+                    if isinstance(data.get("failed_downloads"), dict):
+                        self.failed_downloads = data["failed_downloads"]
+                        logger.info(
+                            f"📋 Cargados {len(self.failed_downloads)} videos con descargas fallidas previas"
+                        )
         except Exception as e:
             logger.warning(f"No se pudo cargar estado previo: {e}")
 
@@ -421,6 +523,7 @@ class YouTubeWatcher:
             payload = {
                 "video_ids": sorted(self.downloaded_videos),
                 "downloads": self.downloads,
+                "failed_downloads": self.failed_downloads,
             }
             self._state_file.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
