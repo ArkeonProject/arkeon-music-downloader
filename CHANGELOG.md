@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.2.0](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.4...v3.2.0) (2026-01-08)
+
+### Features
+
+* **watcher:** add sync deletion safeguards to prevent false positive deletions ([e70c43e](https://github.com/ArkeonProject/arkeon-music-downloader/commit/e70c43e))
+  - Skip sync if YouTube returns less than 80% of expected videos
+  - Skip sync if more than 10% of videos appear deleted simultaneously
+* **watcher:** add failed downloads tracking with 24h retry cooldown ([e70c43e](https://github.com/ArkeonProject/arkeon-music-downloader/commit/e70c43e))
+  - Tracks video_id, failure reason, timestamp, and retry count
+  - Persists failed downloads state in `.downloaded.json`
+  - Prevents log spam from repeated download failures
+
+### Fixed
+
+* **watcher:** improve trash cleanup with mtime fallback when filename timestamp parsing fails ([e70c43e](https://github.com/ArkeonProject/arkeon-music-downloader/commit/e70c43e))
+
+### Changed
+
+* **release:** add explicit version field for workflow compatibility ([265bea4](https://github.com/ArkeonProject/arkeon-music-downloader/commit/265bea4))
+
 ## [3.1.3](https://github.com/ArkeonProject/arkeon-music-downloader/compare/v3.1.2...v3.1.3) (2025-12-02)
 
 
