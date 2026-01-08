@@ -54,8 +54,12 @@ class YouTubeWatcher:
         self.trash_retention_days = trash_retention_days
         self.downloaded_videos = set()
         self.downloads = {}  # video_id -> {filename, downloaded_at, title, artist}
-        self.failed_downloads = {}  # video_id -> {reason, failed_at, title, retry_count}
-        self._failed_retry_hours = 24  # Reintentar descargas fallidas después de X horas
+        self.failed_downloads = (
+            {}
+        )  # video_id -> {reason, failed_at, title, retry_count}
+        self._failed_retry_hours = (
+            24  # Reintentar descargas fallidas después de X horas
+        )
         self._state_file = self.download_path / ".downloaded.json"
         self._trash_folder = self.download_path / ".trash"
 
@@ -191,7 +195,9 @@ class YouTubeWatcher:
                 logger.info(f"✅ Descarga completada: {display_title}")
             else:
                 # Registrar como descarga fallida
-                retry_count = self.failed_downloads.get(video_id, {}).get("retry_count", 0) + 1
+                retry_count = (
+                    self.failed_downloads.get(video_id, {}).get("retry_count", 0) + 1
+                )
                 self.failed_downloads[video_id] = {
                     "title": display_title,
                     "reason": "download_failed",
@@ -205,7 +211,9 @@ class YouTubeWatcher:
                 )
         except Exception as e:
             # Registrar como descarga fallida por excepción
-            retry_count = self.failed_downloads.get(video_id, {}).get("retry_count", 0) + 1
+            retry_count = (
+                self.failed_downloads.get(video_id, {}).get("retry_count", 0) + 1
+            )
             self.failed_downloads[video_id] = {
                 "title": display_title,
                 "reason": str(e),
