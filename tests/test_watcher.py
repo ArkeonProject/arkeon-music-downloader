@@ -104,15 +104,15 @@ class TestYouTubeWatcher:
             "https://example.com", "./test_downloads", enable_sync_deletions=True
         )
 
-        # Simular estado previo
-        watcher.downloaded_videos = {"vid1", "vid2"}
+        # Simular estado previo con 10 videos (para pasar el umbral del 80%)
+        watcher.downloaded_videos = {f"vid{i}" for i in range(1, 11)}
         watcher.downloads = {
-            "vid1": {"filename": "song1.flac", "title": "Song 1"},
-            "vid2": {"filename": "song2.flac", "title": "Song 2"},
+            f"vid{i}": {"filename": f"song{i}.flac", "title": f"Song {i}"}
+            for i in range(1, 11)
         }
 
-        # Simular playlist actual (vid2 eliminado)
-        current_videos = [{"id": "vid1", "title": "Song 1"}]
+        # Simular playlist actual (vid10 eliminado, 9 de 10 = 90% > 80% threshold)
+        current_videos = [{"id": f"vid{i}", "title": f"Song {i}"} for i in range(1, 10)]
 
         # Mock de _remove_file y _save_state
         watcher._remove_file = Mock()
@@ -120,12 +120,12 @@ class TestYouTubeWatcher:
 
         watcher._detect_and_remove_deleted_videos(current_videos)
 
-        # Verificar que se llamó a remove para vid2
-        watcher._remove_file.assert_called_once_with("song2.flac", "Song 2")
+        # Verificar que se llamó a remove para vid10
+        watcher._remove_file.assert_called_once_with("song10.flac", "Song 10")
 
         # Verificar que se actualizó el estado
-        assert "vid2" not in watcher.downloaded_videos
-        assert "vid2" not in watcher.downloads
+        assert "vid10" not in watcher.downloaded_videos
+        assert "vid10" not in watcher.downloads
         watcher._save_state.assert_called_once()
 
     def test_detect_deleted_videos_ignores_invalid_entries(self):
@@ -134,20 +134,26 @@ class TestYouTubeWatcher:
             "https://example.com", "./test_downloads", enable_sync_deletions=True
         )
 
-        watcher.downloaded_videos = {"vid1"}
-        watcher.downloads = {"vid1": {"filename": "song.flac", "title": "Song"}}
+        # Simular estado previo con 10 videos (para pasar el umbral del 80%)
+        watcher.downloaded_videos = {f"vid{i}" for i in range(1, 11)}
+        watcher.downloads = {
+            f"vid{i}": {"filename": f"song{i}.flac", "title": f"Song {i}"}
+            for i in range(1, 11)
+        }
 
-        # Playlist actual trae entrada inválida con el mismo ID
-        current_videos = [{"id": "vid1", "title": "[Deleted video]"}]
+        # Playlist actual: 9 válidos + 1 inválido (vid10 como [Deleted video])
+        current_videos = [{"id": f"vid{i}", "title": f"Song {i}"} for i in range(1, 10)]
+        current_videos.append({"id": "vid10", "title": "[Deleted video]"})
 
         watcher._remove_file = Mock()
         watcher._save_state = Mock()
 
         watcher._detect_and_remove_deleted_videos(current_videos)
 
-        watcher._remove_file.assert_called_once_with("song.flac", "Song")
-        assert "vid1" not in watcher.downloaded_videos
-        assert "vid1" not in watcher.downloads
+        # vid10 debe ser eliminado porque su entrada es inválida
+        watcher._remove_file.assert_called_once_with("song10.flac", "Song 10")
+        assert "vid10" not in watcher.downloaded_videos
+        assert "vid10" not in watcher.downloads
         watcher._save_state.assert_called_once()
 
     @patch("shutil.move")
