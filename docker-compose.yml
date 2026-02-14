@@ -16,10 +16,9 @@ services:
       - USE_TRASH_FOLDER=${USE_TRASH_FOLDER:-true}
       - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-7}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - COOKIES_FILE=/cookies.txt
+      - COOKIES_FILE=/downloads/cookies.txt
     volumes:
       - ${HOST_DOWNLOAD_PATH:-./downloads}:/downloads
-      - ./cookies.txt:/cookies.txt
     networks:
       - downloader-network
     restart: unless-stopped

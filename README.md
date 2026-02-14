@@ -318,9 +318,9 @@ YouTube bloquea frecuentemente las descargas desde servidores si no se usan cook
     -   **Firefox**: [Get cookies.txt LOCALLY](https://addons.mozilla.org/en-US/firefox/addon/get-cookies-txt-locally/)
 2.  Visita [YouTube Music](https://music.youtube.com) y asegúrate de estar logueado con tu cuenta.
 3.  Usa la extensión para exportar las cookies.
-4.  Guarda el archivo como `cookies.txt` en la raíz del proyecto (junto a `docker-compose.yml`).
+4.  Guarda el archivo como `cookies.txt` en tu carpeta de descargas (`HOST_DOWNLOAD_PATH`).
 
-El archivo `docker-compose.yml` ya está configurado para montar este archivo automáticamente si existe.
+El archivo `docker-compose.yml` buscará el archivo en `/downloads/cookies.txt`.
 
 ## 📦 Despliegue con Docker Compose / Portainer
 
