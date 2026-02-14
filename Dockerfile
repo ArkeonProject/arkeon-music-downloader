@@ -16,10 +16,7 @@ RUN apt-get update && apt-get install -y \
     libopenjp2-7 \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar yt-dlp version fija para reproducibilidad
-ARG YT_DLP_VERSION=2024.08.06
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp -o /usr/local/bin/yt-dlp \
-    && chmod +x /usr/local/bin/yt-dlp
+
 
 # Crear directorio de trabajo
 WORKDIR /app

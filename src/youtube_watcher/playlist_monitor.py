@@ -41,6 +41,8 @@ class PlaylistMonitor:
                 "quiet": True,
                 "no_warnings": True,
                 "cachedir": str(Path(tempfile.gettempdir()) / "yt-dlp-cache"),
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "nocheckcertificate": True,
             }
             if self.cookies_path:
                 ydl_opts["cookiefile"] = self.cookies_path
@@ -77,6 +79,8 @@ class PlaylistMonitor:
                 "quiet": True,
                 "no_warnings": True,
                 "cachedir": str(Path(tempfile.gettempdir()) / "yt-dlp-cache"),
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "nocheckcertificate": True,
             }
             if self.cookies_path:
                 ydl_opts["cookiefile"] = self.cookies_path
