@@ -4,6 +4,7 @@ Script manual para descargar la última canción de una playlist.
 Uso:
   python scripts/test_latest_download.py [PLAYLIST_URL] [DOWNLOAD_PATH]
 """
+
 import os
 import sys
 from pathlib import Path
