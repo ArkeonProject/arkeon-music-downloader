@@ -9,6 +9,6 @@ Pillow>=10.0.0
 requests>=2.31.0
 
 # Herramientas externas (ahora como dependencia de Python):
-yt-dlp>=2023.0.0
+yt-dlp>=2025.01.01
 
 # ffmpeg sigue siendo externo (instalar por separado)

@@ -308,11 +308,19 @@ print(version("youtube-playlist-watcher"))
 
 Consulta también el historial de cambios en `CHANGELOG.md` para ver qué se incluyó en cada versión y las reglas de cuándo incrementar `MAJOR.MINOR.PATCH` (SemVer).
 
-### Playlists Privadas / Restricciones
+## 🍪 Configuración de Cookies (Requerido)
 
-Si tu playlist requiere autenticación o acceso regional:
-- Exporta `COOKIES_FILE` apuntando a un archivo de cookies compatible con `yt-dlp`.
-- En Docker, monta ese archivo dentro del contenedor (por ejemplo: `-v /ruta/host/cookies.txt:/app/cookies.txt` y `COOKIES_FILE=/app/cookies.txt`).
+YouTube bloquea frecuentemente las descargas desde servidores si no se usan cookies. Para evitar errores **403 Forbidden**, debes proporcionar un archivo `cookies.txt`.
+
+### Cómo obtener el archivo `cookies.txt`:
+1.  Instala una extensión de navegador para exportar cookies en formato Netscape/Mozilla:
+    -   **Chrome/Brave**: [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflccgomilekfcg)
+    -   **Firefox**: [Get cookies.txt LOCALLY](https://addons.mozilla.org/en-US/firefox/addon/get-cookies-txt-locally/)
+2.  Visita [YouTube Music](https://music.youtube.com) y asegúrate de estar logueado con tu cuenta.
+3.  Usa la extensión para exportar las cookies.
+4.  Guarda el archivo como `cookies.txt` en tu carpeta de descargas (`HOST_DOWNLOAD_PATH`).
+
+El archivo `docker-compose.yml` buscará el archivo en `/downloads/cookies.txt`. Si usas Portainer, simplemente coloca este archivo dentro de la carpeta que mapeaste como `/downloads`.
 
 ## 📦 Despliegue con Docker Compose / Portainer
 

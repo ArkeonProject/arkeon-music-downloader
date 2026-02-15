@@ -16,14 +16,14 @@ services:
       - USE_TRASH_FOLDER=${USE_TRASH_FOLDER:-true}
       - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-7}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # - COOKIES_FILE=${COOKIES_FILE}
+      - COOKIES_FILE=/downloads/cookies.txt
     volumes:
       - ${HOST_DOWNLOAD_PATH:-./downloads}:/downloads
     networks:
       - downloader-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "sh", "-c", "yt-dlp --version >/dev/null 2>&1 && ffmpeg -version >/dev/null 2>&1"]
+      test: [ "CMD", "sh", "-c", "yt-dlp --version >/dev/null 2>&1 && ffmpeg -version >/dev/null 2>&1" ]
       interval: 1m
       timeout: 10s
       retries: 3
