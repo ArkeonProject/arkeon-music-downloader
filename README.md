@@ -322,6 +322,10 @@ YouTube bloquea frecuentemente las descargas desde servidores si no se usan cook
 
 El archivo `docker-compose.yml` buscará el archivo en `/downloads/cookies.txt`. Si usas Portainer, simplemente coloca este archivo dentro de la carpeta que mapeaste como `/downloads`.
 
+> [!IMPORTANT]
+> **Permisos del archivo**: Asegúrate de que el archivo `cookies.txt` tenga permisos de lectura "para todos" (644), especialmente si tu contenedor no corre como root.
+> Ejecuta en tu servidor: `chmod 644 /path/to/downloads/cookies.txt`
+
 ## 📦 Despliegue con Docker Compose / Portainer
 
 - En `.env` del stack define al menos:
