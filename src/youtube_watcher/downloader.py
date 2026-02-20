@@ -33,6 +33,34 @@ class YouTubeDownloader:
 
         # Crear directorio si no existe
         self.download_path.mkdir(parents=True, exist_ok=True)
+        
+        # Plantilla de salida de yt-dlp
+        # Usamos %(id)s para que yt-dlp maneje el nombre dinámicamente según el video,
+        # lo que nos permite usar una sola instancia persistente de YoutubeDL
+        out_tmpl = str(self.download_path / "temp_%(id)s.%(ext)s")
+        
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": out_tmpl,
+            "quiet": True,
+            "no_warnings": True,
+            "ignoreerrors": True,
+            "cachedir": str(Path(tempfile.gettempdir()) / "yt-dlp-cache"),
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "nocheckcertificate": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "opus",
+                    "preferredquality": "0",
+                }
+            ],
+        }
+
+        if self.cookies_path:
+            ydl_opts["cookiefile"] = self.cookies_path
+            
+        self._ydl = yt_dlp.YoutubeDL(ydl_opts)
 
     def download_and_convert(self, video_data: Dict) -> Optional[Dict]:
         """
@@ -137,36 +165,12 @@ class YouTubeDownloader:
         """
         base_filename = f"temp_{video_data['id']}"
         # Template de salida esperado por yt-dlp
-        out_tmpl = str(self.download_path / f"{base_filename}.%(ext)s")
-
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": out_tmpl,
-            "quiet": True,
-            "no_warnings": True,
-            "ignoreerrors": True,
-            "cachedir": str(Path(tempfile.gettempdir()) / "yt-dlp-cache"),
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "nocheckcertificate": True,
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "opus",
-                    "preferredquality": "0",
-                }
-            ],
-        }
-
-        if self.cookies_path:
-            ydl_opts["cookiefile"] = self.cookies_path
-
         try:
             logger.info(f"Descargando '{title}' en Opus...")
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Descargar usando la URL del video
-                url = f"https://www.youtube.com/watch?v={video_data['id']}"
-                ydl.download([url])
+            # Descargar usando la URL del video
+            url = f"https://www.youtube.com/watch?v={video_data['id']}"
+            self._ydl.download([url])
 
             # Buscar el archivo descargado (puede tener extensión .opus o .webm)
             for ext in ["opus", "webm"]:
@@ -264,3 +268,11 @@ class YouTubeDownloader:
             return f"{stem}.{ext}"
         except Exception:
             return filename[:max_len]
+
+    def __del__(self):
+        """Asegurar el cierre de la instancia de YoutubeDL."""
+        if hasattr(self, '_ydl') and self._ydl:
+            try:
+                self._ydl.close()
+            except Exception:
+                pass
