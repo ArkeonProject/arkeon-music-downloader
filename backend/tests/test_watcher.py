@@ -1,7 +1,5 @@
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta
 
 from youtube_watcher.watcher import YouTubeWatcher
 from youtube_watcher.playlist_monitor import PlaylistMonitor

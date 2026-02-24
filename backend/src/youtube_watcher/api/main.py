@@ -8,13 +8,12 @@ from ..db.database import engine, Base
 from . import routes
 import threading
 from ..watcher import YouTubeWatcher
+from . import deps
 
 logger = logging.getLogger(__name__)
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
-
-from . import deps
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

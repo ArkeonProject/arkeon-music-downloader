@@ -5,7 +5,6 @@ YouTube Playlist Watcher - Clase principal para monitoreo continuo usando SQLite
 import logging
 import time
 import shutil
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict
@@ -267,7 +266,7 @@ class YouTubeWatcher:
                     if now - file_date > retention_delta:
                         file_path.unlink()
                         logger.info(f"🗑️ Auto-limpieza de .trash: eliminado {file_path.name}")
-                except Exception as e:
+                except Exception:
                     pass
         except Exception as e:
             logger.error(f"Error en auto-limpieza de .trash: {e}")
