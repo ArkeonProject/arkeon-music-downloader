@@ -1,6 +1,10 @@
+# Development override — exposes ports for local use
 services:
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-arkeon/music-downloader}/backend:latest
+    build:
+      context: ./backend
+      args:
+        YT_DLP_VERSION: ${YT_DLP_VERSION:-2025.03.31}
     container_name: music-downloader-backend
     user: "${UID:-1000}:${GID:-1000}"
     environment:
@@ -10,8 +14,10 @@ services:
       - ENABLE_SYNC_DELETIONS=${ENABLE_SYNC_DELETIONS:-false}
       - USE_TRASH_FOLDER=${USE_TRASH_FOLDER:-true}
       - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-7}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
       - COOKIES_FILE=/data/cookies.txt
+    ports:
+      - "8000:8000"
     volumes:
       - ${HOST_DOWNLOAD_PATH:-./downloads}:/downloads
       - ./data:/data
@@ -25,25 +31,17 @@ services:
       retries: 3
 
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-arkeon/music-downloader}/frontend:latest
+    build:
+      context: ./frontend
     container_name: music-downloader-frontend
-    depends_on:
-      - backend
+    ports:
+      - "3000:80"
     networks:
       - music-internal
-      - proxy-internal
+    depends_on:
+      - backend
     restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=proxy-internal"
-      # Router (Traefik interno)
-      - "traefik.http.routers.music-frontend.rule=Host(`${TRAEFIK_HOST:-music.lan}`)"
-      - "traefik.http.routers.music-frontend.entrypoints=web"
-      # Servicio
-      - "traefik.http.services.music-frontend.loadbalancer.server.port=80"
 
 networks:
   music-internal:
     driver: bridge
-  proxy-internal:
-    external: true

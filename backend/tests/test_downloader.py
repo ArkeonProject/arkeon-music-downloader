@@ -61,15 +61,17 @@ def test_download_opus_returns_downloaded_file(monkeypatch, tmp_path):
             return False
 
         def download(self, urls):
-            # Simular archivo descargado por yt-dlp
-            (tmp_path / f"temp_{video_id}.opus").write_text("data")
+            (tmp_path / f"temp_{video_id}.webm").write_text("data")
 
     monkeypatch.setattr(
         downloader_module.yt_dlp, "YoutubeDL", lambda opts: DummyYDL(opts)
     )
+    
+    # Reinicializar downloader para que coja el mock
+    downloader._ydl = DummyYDL({})
 
     path = downloader._download_opus({"id": video_id}, "Test Title")
 
     assert path is not None
-    assert path.name == f"temp_{video_id}.opus"
+    assert path.name == f"temp_{video_id}.webm"
     assert path.exists()

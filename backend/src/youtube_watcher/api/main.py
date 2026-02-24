@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
+from . import deps
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Start the background watcher thread
@@ -23,7 +25,13 @@ async def lifespan(app: FastAPI):
     download_path = os.getenv("DOWNLOAD_PATH", str(Path(__file__).parent.parent.parent.parent / "downloads"))
     interval = int(os.getenv("OBSERVER_INTERVAL_MS", "60000"))
     
-    watcher = YouTubeWatcher(download_path=download_path, interval_ms=interval)
+    # Comprobar si existe cookies.txt guardado en el volumen de data
+    default_cookies = os.getenv("COOKIES_PATH", str(Path(__file__).parent.parent.parent.parent / "data" / "cookies.txt"))
+    active_cookies = default_cookies if os.path.exists(default_cookies) else None
+    
+    watcher = YouTubeWatcher(download_path=download_path, interval_ms=interval, cookies_path=active_cookies)
+    deps.set_watcher(watcher)
+    
     watcher_thread = threading.Thread(target=watcher.start, daemon=True)
     watcher_thread.start()
     

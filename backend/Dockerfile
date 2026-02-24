@@ -31,8 +31,8 @@ COPY src ./src
 # Asegurar que los módulos del paquete estén en el PYTHONPATH
 ENV PYTHONPATH="/app/src"
 
-# Crear directorio de descargas
-RUN mkdir -p /downloads
+# Crear directorio de descargas y base de datos con permisos abiertos
+RUN mkdir -p /downloads /app/data && chmod -R 777 /downloads /app/data
 
 # Ejecutará con un usuario mapeado desde docker-compose (UID/GID)
 

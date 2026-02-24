@@ -1,25 +1,28 @@
-name: CD
+name: CD Test
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: false
+        default: 'develop'
+        type: string
 
 jobs:
-  deploy-backend:
+  test-build-backend:
     uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.1.5
     with:
       image_name: ${{ github.repository }}/backend
-      mode: 'production'
+      mode: 'milestone'
+      branch: ${{ inputs.branch || 'develop' }}
       dockerfile_path: './backend/Dockerfile'
       context: './backend'
-    secrets:
-      PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_BACKEND }}
 
-  deploy-frontend:
+  test-build-frontend:
     uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.1.5
     with:
       image_name: ${{ github.repository }}/frontend
-      mode: 'production'
+      mode: 'milestone'
+      branch: ${{ inputs.branch || 'develop' }}
       dockerfile_path: './frontend/Dockerfile'
       context: './frontend'
-    secrets:
-      PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_FRONTEND }}

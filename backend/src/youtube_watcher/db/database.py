@@ -9,7 +9,12 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 
 # Create the data directory if it doesn't exist
-os.makedirs(DATA_DIR, exist_ok=True)
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except PermissionError:
+    # Si estamos en Docker con un usuario mapeado y no se puede crear, asumimos
+    # que docker-compose ya mapeó el volumen correctamente de todos modos.
+    pass
 
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR}/watcher.db")
 

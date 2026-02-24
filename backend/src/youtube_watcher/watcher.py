@@ -52,6 +52,15 @@ class YouTubeWatcher:
         logger.info(f"Watcher inicializado. Directorio de descargas: {self.download_path}")
         logger.info(f"Intervalo de observación: {interval_ms}ms")
 
+    def update_cookies(self, cookies_path: str | None):
+        """Actualizar el archivo de cookies y reiniciar el downloader local"""
+        self.cookies_path = cookies_path
+        self.downloader = YouTubeDownloader(str(self.download_path), cookies_path=self.cookies_path)
+        if cookies_path:
+            logger.info("🍪 Cookies establecidas localmente en el Watcher")
+        else:
+            logger.info("🍪 Cookies removidas del Watcher")
+
     def start(self):
         """Iniciar el watcher en bucle continuo"""
         logger.info("Iniciando monitor de fuentes en segundo plano...")
@@ -122,6 +131,8 @@ class YouTubeWatcher:
         
         if existing_track:
             if existing_track.download_status == "completed":
+                return
+            if existing_track.download_status == "ignored":
                 return
             if existing_track.download_status == "pending":
                 # It's pending, let's process it
