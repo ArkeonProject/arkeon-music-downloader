@@ -28,7 +28,7 @@ class YouTubeWatcher:
         interval_ms: int = 60000,
         *,
         cookies_path: str | None = None,
-        enable_sync_deletions: bool = False,
+        enable_sync_deletions: bool = True,  # Changed to True
         use_trash_folder: bool = True,
         trash_retention_days: int = 7,
     ):
@@ -114,7 +114,7 @@ class YouTubeWatcher:
         raw_title = video_data.get("title")
         title = str(raw_title) if raw_title is not None else ""
         video_id = video_data.get("id")
-        is_invalid = not video_id or not title.strip() or "[Deleted" in title
+        is_invalid = not video_id or not title.strip() or "[Deleted" in title or "[Private" in title
         return video_id, raw_title, title, is_invalid
 
     def _process_video(self, video_data: Dict, source_id: int, db):
@@ -193,39 +193,48 @@ class YouTubeWatcher:
             current_video_ids = set()
             for video_data in current_videos:
                 video_id, _, _, is_invalid = self._normalize_video_entry(video_data)
-                if not is_invalid:
+                # YouTube sometimes returns raw IDs with missing titles for deleted items
+                # We specifically want to parse valid playlist members 
+                if video_id and not is_invalid:
                     current_video_ids.add(video_id)
 
-            downloaded_tracks = db.query(Track).filter(Track.source_id == source_id, Track.download_status == "completed").all()
+            if not current_video_ids:
+                return # Playlist might be private or unreachable, do not mass-delete
+
+            downloaded_tracks = db.query(Track).filter(
+                Track.source_id == source_id, 
+                Track.download_status == "completed"
+            ).all()
+            
             downloaded_video_ids = {t.youtube_id for t in downloaded_tracks}
 
-            total_downloaded = len(downloaded_video_ids)
-            total_current = len(current_video_ids)
-
-            if total_downloaded > 0 and total_current < total_downloaded * 0.8:
-                return
-
+            # Find items in DB that are NO LONGER in the YouTube playlist
             deleted_video_ids = downloaded_video_ids - current_video_ids
 
             if not deleted_video_ids:
                 return
 
-            deletion_threshold = max(5, int(total_downloaded * 0.1))
-            if len(deleted_video_ids) > deletion_threshold:
+            # Safety check: if the difference is > 30% of the library, something went wrong with the fetch
+            # Do not mass purge to prevent catastrophic data loss on API errors
+            total_downloaded = len(downloaded_video_ids)
+            if len(deleted_video_ids) > (total_downloaded * 0.3):
+                logger.warning(f"⚠️ Alerta anti-purgado: Detectadas {len(deleted_video_ids)} canciones como borradas, lo cual supera el umbral de seguridad. Ignorando sincronización estricta por seguridad.")
                 return
 
-            logger.info(f"🗑️ Detectadas {len(deleted_video_ids)} canciones eliminadas de la playlist")
+            logger.info(f"🗑️ Detectadas {len(deleted_video_ids)} canciones eliminadas de la playlist de YouTube. Sincronizando...")
 
             for video_id in deleted_video_ids:
                 track = db.query(Track).filter(Track.youtube_id == video_id).first()
-                if track and track.file_path:
-                    self._remove_file(track.file_path, track.title)
+                if track:
+                    logger.info(f"Retirando canción huérfana: {track.title}")
+                    if track.file_path:
+                        self._remove_file(track.file_path, track.title)
                     db.delete(track)
             
             db.commit()
 
         except Exception as e:
-            logger.error(f"Error detectando videos eliminados: {e}")
+            logger.error(f"Error procesando sincronización de eliminaciones: {e}")
 
     def _remove_file(self, file_path_str: str, title: str):
         try:
