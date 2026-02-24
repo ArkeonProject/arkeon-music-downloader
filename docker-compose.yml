@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-arkeon/music-downloader}/backend:latest
+    image: ghcr.io/arkeonproject/arkeon-music-downloader/backend:latest
     container_name: music-downloader-backend
     user: "${UID:-1000}:${GID:-1000}"
     environment:
@@ -25,7 +25,7 @@ services:
       retries: 3
 
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-arkeon/music-downloader}/frontend:latest
+    image: ghcr.io/arkeonproject/arkeon-music-downloader/frontend:latest
     container_name: music-downloader-frontend
     depends_on:
       - backend
