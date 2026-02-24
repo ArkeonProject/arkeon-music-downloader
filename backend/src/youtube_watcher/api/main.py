@@ -24,11 +24,23 @@ async def lifespan(app: FastAPI):
     download_path = os.getenv("DOWNLOAD_PATH", str(Path(__file__).parent.parent.parent.parent / "downloads"))
     interval = int(os.getenv("OBSERVER_INTERVAL_MS", "60000"))
     
+    # Parse sync settings from environment
+    enable_sync_deletions = str(os.getenv("ENABLE_SYNC_DELETIONS", "true")).lower() == "true"
+    use_trash_folder = str(os.getenv("USE_TRASH_FOLDER", "true")).lower() == "true"
+    trash_retention_days = int(os.getenv("TRASH_RETENTION_DAYS", "7"))
+    
     # Comprobar si existe cookies.txt guardado en el volumen de data
     default_cookies = os.getenv("COOKIES_PATH", str(Path(__file__).parent.parent.parent.parent / "data" / "cookies.txt"))
     active_cookies = default_cookies if os.path.exists(default_cookies) else None
     
-    watcher = YouTubeWatcher(download_path=download_path, interval_ms=interval, cookies_path=active_cookies)
+    watcher = YouTubeWatcher(
+        download_path=download_path, 
+        interval_ms=interval, 
+        cookies_path=active_cookies,
+        enable_sync_deletions=enable_sync_deletions,
+        use_trash_folder=use_trash_folder,
+        trash_retention_days=trash_retention_days
+    )
     deps.set_watcher(watcher)
     
     watcher_thread = threading.Thread(target=watcher.start, daemon=True)
