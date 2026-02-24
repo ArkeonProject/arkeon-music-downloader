@@ -38,33 +38,78 @@ El proyecto está dividido en dos servicios principales:
 - **Calidad FLAC**: Convierte audio a formato FLAC sin pérdida usando `ffmpeg` y `yt-dlp`.
 - **Metadatos completos**: Añade título, artista, álbum, año y portada (usando `mutagen` y `Pillow`).
 
-## 🐳 Instalación con Docker (Recomendado)
+## 🐳 Despliegue en Servidor (Paso a Paso)
 
-La forma más sencilla de ejecutar el proyecto es usando Docker Compose, el cual lanzará el backend, el frontend y Traefik (para enrutamiento inverso).
+Recomendamos usar Docker Compose para desplegar el proyecto en tu servidor (ej. VPS o NAS). El `docker-compose.yml` base incluye el backend, el frontend y un proxy inverso Traefik.
 
-### 1. Variables de Entorno
+### Paso 1: Archivo Compose
 
-Configura las variables de entorno principales en el `docker-compose.yml` local o a través de Portainer. Ya no se usa un archivo `.env` por defecto porque gran parte de la configuración ahora se maneja vía base de datos local y la UI.
+Crea un archivo `docker-compose.yml` en tu servidor basado en el de este repositorio. Las imágenes oficiales ya están publicadas en GHCR.
 
-### 2. Ejecutar
+```yaml
+version: '3.8'
 
-```bash
-docker-compose up -d
+services:
+  traefik:
+    image: traefik:v3.1
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  backend:
+    image: ghcr.io/arkeonproject/arkeon-music-downloader/backend:latest
+    volumes:
+      - /ruta/a/tu/musica:/downloads
+      - ./data:/app/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+
+  frontend:
+    image: ghcr.io/arkeonproject/arkeon-music-downloader/frontend:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
 ```
 
-### 3. Acceso
+### Paso 2: Integración con Navidrome (u otros servidores multimedia)
 
-- **Frontend (Dashboard)**: `http://localhost:8080`
-- **Backend (API Docs)**: `http://localhost:8080/api/docs`
+La potencia de este proyecto radica en alimentar automáticamente tu servidor de música personal. En tu `docker-compose.yml`, donde dice `/ruta/a/tu/musica`, debes poner **la misma ruta que tu servidor Navidrome (o Plex/Jellyfin) está leyendo**.
 
-## ⚙️ Configuración Vía Interfaz Web
+Por ejemplo, si Navidrome lee de `/mnt/storage/media/music/`, el volumen del backend debe ser:
+```yaml
+    volumes:
+      - /mnt/storage/media/music/:/downloads
+```
+De esta manera, tan pronto como el Watcher descarga un nuevo FLAC, aparecerá mágicamente en tu Navidrome.
 
-En la esquina superior derecha del Dashboard, haz clic en **⚙️ Settings**:
-1. **Fuentes Activas**: Aquí puedes añadir, pausar (⏸) o reanudar (▶) las playlists que el watcher está observando.
-2. **Cookies de YouTube**: Sube un archivo `cookies.txt` exportado desde tu navegador para permitir la descarga de contenido bloqueado o privado.
+### Paso 3: Arrancar el servicio
 
-> [!IMPORTANT]  
-> YouTube bloquea descargas automatizadas frecuentemente. Es altamente recomendado subir tu `cookies.txt` en la vista de *Settings* de la UI para evitar errores 403.
+Levanta los contenedores:
+```bash
+docker compose up -d
+```
+Accede al Dashboard en la web visitando: `http://localhost:8080` (o la IP de tu servidor en el puerto 8080).
+
+### Paso 4: Evitar Error 403 (Configurar Cookies)
+
+YouTube bloquea descargas automatizadas frecuentemente. Para solucionarlo, debes proveer tus cookies de sesión usando el menú "Settings" ⚙️ del Dashboard web:
+
+1. **Obtener tus cookies**:
+   - Descarga una extensión como [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflccgomilekfcg) para Chrome/Brave.
+   - Entra a [YouTube](https://www.youtube.com) habiendo iniciado sesión.
+   - Haz clic en la extensión y selecciona "Export As cookies.txt".
+2. **Subirlas a la App**:
+   - En el Dashboard de la aplicación (`http://tu-servidor:8080`), ve a ⚙️ **Settings**.
+   - Usa el botón de subida de archivos en la sección "Cookies de YouTube" y selecciona el `cookies.txt` que acabas de descargar.
+   - Esto reiniciará internamente el motor local (`yt-dlp`) autorizando tus descargas sin necesitar reiniciar contenedores.
 
 ## 🛠️ Entorno de Desarrollo Local
 
