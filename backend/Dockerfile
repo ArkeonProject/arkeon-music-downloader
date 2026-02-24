@@ -32,7 +32,7 @@ COPY src ./src
 ENV PYTHONPATH="/app/src"
 
 # Crear directorio de descargas y base de datos con permisos abiertos
-RUN mkdir -p /downloads /app/data && chmod -R 777 /downloads /app/data
+RUN mkdir -p /downloads /app/data /data && chmod -R 777 /downloads /app/data /data
 
 # Ejecutará con un usuario mapeado desde docker-compose (UID/GID)
 
