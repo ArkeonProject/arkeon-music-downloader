@@ -262,8 +262,8 @@ function App() {
               </div>
               <div className="track-date">{formatDate(t.created_at)}</div>
               <div className="track-actions">
-                {t.download_status === 'ignored' ? (
-                  <button className="icon-btn restore" onClick={() => handleRestore(t.id)} title="Restaurar">
+                {t.download_status === 'ignored' || t.download_status === 'failed' ? (
+                  <button className="icon-btn restore" onClick={() => handleRestore(t.id)} title={t.download_status === 'failed' ? 'Reintentar' : 'Restaurar'}>
                     ♻️
                   </button>
                 ) : (
