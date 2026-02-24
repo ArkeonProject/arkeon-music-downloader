@@ -1,99 +1,37 @@
-# Documentación del Proyecto
+# Documentación Arquitectónica
 
-## Estructura del Código
+El proyecto `arkeon-music-downloader` evolucionó de un script CLI monolítico a una aplicación web completa con separación de responsabilidades (Backend RESTful + Frontend React).
 
-### Módulos Principales
+## Backend (FastAPI + SQLAlchemy)
 
-- **`watcher.py`**: Clase principal que coordina todo el proceso
-- **`playlist_monitor.py`**: Monitorea playlists de YouTube
-- **`downloader.py`**: Descarga y convierte videos a FLAC
-- **`metadata_handler.py`**: Maneja metadatos y portadas
-- **`cli.py`**: Interfaz de línea de comandos
+Ubicado en la carpeta `/backend/`.
 
-### Flujo de Trabajo
+### Componentes Principales
 
-1. **Inicialización**: El watcher se configura con URL y directorio
-2. **Monitoreo**: Verifica la playlist cada intervalo configurado
-3. **Detección**: Identifica videos nuevos no descargados
-4. **Descarga**: Usa yt-dlp para obtener audio en Opus
-5. **Conversión**: Convierte a FLAC con ffmpeg
-6. **Metadatos**: Añade tags y portada embebida
+- **`api/main.py` y `api/routes.py`**: Definen los endpoints REST. Sirven datos a la UI sobre el estado de las descargas (`/tracks`), gestionan las fuentes/playlists (`/sources`), manejan la subida de cookies (`/settings/cookies`), y encolan descargas individuales (`/tracks/download-single`).
+- **`watcher.py` (WatcherThread)**: Un hilo en segundo plano que se ejecuta de forma paralela a FastAPI. Es el motor principal que procesa las fuentes (playlists) activas, sincroniza los cambios contra la base de datos (SQLite) utilizando la estrategia _ignore-on-delete_, e invoca a `yt-dlp`.
+- **`downloader.py`**: Envuelve las llamadas a `yt-dlp` y `ffmpeg`. Configura las rutas de salida, incrusta las cookies si existen, y maneja la conversión a FLAC sin pérdida.
+- **`metadata_handler.py`**: Usa la librería `mutagen` para etiquetar los archivos generados con ID3 estándar y portadas de álbum, preparando los archivos para ser indexados por servidores multimedia (como Plex o Jellyfin).
 
-## Configuración
+### Flujo de Estados de Descarga (Lifecycle)
+Cada pista (`Track`) insertada en SQLite transita por varios estados representados en el modelo:
+1. `pending`: El watcher la vio o la UI solicitó una descarga puntual.
+2. `downloading` (implicito, manejado durante la ejecución activa).
+3. `completed`: El archivo físico fue escrito en el disco duro exitosamente.
+4. `failed`: Error en red, baneos de IP o restricciones territoriales de YouTube.
+5. `ignored`: Si un usuario borra la canción en la UI, o si el source la borró remotamente en YouTube. Al marcarse como `ignored`, el watcher no intentará re-descargarla a menos que el usuario la restaure.
 
-### Variables de Entorno
+## Frontend (React + Vite)
 
-- `PLAYLIST_URL`: URL de la playlist (requerido)
-- `DOWNLOAD_PATH`: Directorio de salida (default: `./downloads`)
-- `OBSERVER_INTERVAL_MS`: Intervalo en ms (default: `60000`)
+Ubicado en la carpeta `/frontend/`.
 
-### Herramientas Externas
+Es una SPA (Single Page Application) minimalista enfocada en la usabilidad y legibilidad de datos.
 
-- **yt-dlp**: Descarga de videos
-- **ffmpeg**: Conversión de audio
-- **Python 3.11+**: Runtime
+### Características Clave
+- **Renderizado Adaptativo**: Uso de CSS Vanilla (`index.css`) con variables HSL y soporte First-class para "Dark Mode" estilo Glassmorphism.
+- **Estados Reactivos**: El `App.tsx` principal expone un dashboard unificado con filtros (`all`, `active`, `ignored`, `failed`). Refresca automáticamente el estado del servidor haciendo polling preventivo mínimo.
+- **Gestión de Settings**: Un modal permite habilitar/pausar las descargas de un Source específico sin borrar el Source de la base de datos, y subir directamente el archivo `cookies.txt` enviando un multipart-form.
 
-## Desarrollo
+## Comunicación API
 
-### Instalación en Modo Desarrollo
-
-```bash
-# Clonar y configurar
-git clone <repo>
-cd arkeon-music-downloader
-python -m venv venv
-source venv/bin/activate
-
-# Instalar en modo desarrollo
-pip install -e ".[dev]"
-
-# Ejecutar tests
-pytest
-```
-
-### Estructura de Tests
-
-- **`test_watcher.py`**: Tests para la clase principal
-- **`test_playlist_monitor.py`**: Tests para monitoreo
-- **`test_downloader.py`**: Tests para descarga
-- **`test_metadata_handler.py`**: Tests para metadatos
-
-### Herramientas de Calidad
-
-- **pytest**: Framework de testing
-- **black**: Formateador de código
-- **flake8**: Linter
-- **mypy**: Verificación de tipos
-
-## Docker
-
-### Construcción
-
-```bash
-docker build -t youtube-watcher .
-```
-
-### Ejecución
-
-```bash
-docker run -e PLAYLIST_URL="..." -v ./downloads:/downloads youtube-watcher
-```
-
-### Compose
-
-```bash
-export PLAYLIST_URL="..."
-docker-compose up -d
-```
-
-## Troubleshooting
-
-### Problemas Comunes
-
-1. **yt-dlp no encontrado**: Instalar con `pip install yt-dlp`
-2. **ffmpeg no encontrado**: Instalar con `brew install ffmpeg` (macOS)
-3. **Dependencias Python**: Usar `pip install -r requirements.txt`
-
-### Logs
-
-El watcher proporciona logs detallados en stdout. Usar `docker logs` para contenedores.
+El Frontend llama al Backend a través de `/api`. Cuando corren en contenedores orquestados con `docker-compose.yml`, Traefik actúa como API Gateway, ruteando `http://[host]/api/*` directamente al contenedor FastAPI, y el tráfico restante al servidor estático Nginx que sirve el Frontend React.

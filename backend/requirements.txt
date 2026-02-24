@@ -11,4 +11,10 @@ requests>=2.31.0
 # Herramientas externas (ahora como dependencia de Python):
 yt-dlp>=2025.01.01
 
+# Web Framework & Database
+fastapi>=0.109.0
+uvicorn>=0.27.0
+sqlalchemy>=2.0.0
+python-multipart>=0.0.9
+
 # ffmpeg sigue siendo externo (instalar por separado)

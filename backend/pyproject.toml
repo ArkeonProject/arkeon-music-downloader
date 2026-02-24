@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arkeon-music-downloader"
-version = "3.2.0"
+version = "3.3.1"
 # dynamic = ["readme"]
 description = "YouTube Playlist Watcher - Descarga automática a FLAC"
 readme = "README.md"
@@ -30,6 +30,9 @@ dependencies = [
     "Pillow>=10.0.0",
     "requests>=2.31.0",
     "yt-dlp>=2023.0.0",
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "sqlalchemy>=2.0.0",
 ]
 
 [project.optional-dependencies]
