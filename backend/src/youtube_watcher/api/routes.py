@@ -203,13 +203,19 @@ def delete_track(track_id: int, db: Session = Depends(get_db)):
 
 @router.put("/tracks/{track_id}/restore")
 def restore_track(track_id: int, db: Session = Depends(get_db)):
-    """Restore an ignored track so it's queued for re-download"""
+    """Restore an ignored or failed track so it's queued for re-download"""
     track = db.query(Track).filter(Track.id == track_id).first()
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
     
+    # 1. Reset status to pending
     track.download_status = "pending"
     db.commit()
+    
+    # 2. Clear from watcher's failed cache to bypass the 24h block list
+    watcher = get_watcher()
+    if watcher and track.youtube_id in watcher.failed_downloads:
+        watcher.failed_downloads.pop(track.youtube_id, None)
     
     return {"status": "success", "message": f"Track {track_id} queued for re-download"}
 
