@@ -166,3 +166,15 @@ downloads/
 
 # Logs
 *.log
+
+# Data & cookies
+data/
+dummy_cookies.txt
+*.db
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+
+# Virtual environments
+.venv_test/

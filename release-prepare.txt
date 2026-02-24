@@ -1,0 +1,161 @@
+# .github/workflows/reusable/release-prepare.yml
+# Reusable workflow for creating release branches and preparing releases
+
+name: 📦 Prepare Release
+
+on:
+  workflow_call:
+    inputs:
+      version-bump:
+        description: 'Version bump type (patch, minor, major)'
+        required: true
+        type: string
+      
+      release-notes:
+        description: 'Additional release notes'
+        required: false
+        type: string
+        default: ''
+      
+      base-branch:
+        description: 'Base branch for release'
+        required: false
+        type: string
+        default: 'develop'
+      
+      project-type:
+        description: 'Project type (node, python)'
+        required: true
+        type: string
+    
+    outputs:
+      release-branch:
+        description: 'Created release branch name'
+        value: ${{ jobs.prepare.outputs.branch-name }}
+      
+      new-version:
+        description: 'New version number'
+        value: ${{ jobs.prepare.outputs.version }}
+
+jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: [self-hosted, n100]
+    
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    outputs:
+      branch-name: ${{ steps.create-branch.outputs.branch }}
+      version: ${{ steps.bump-version.outputs.version }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.base-branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🟢 Setup Node.js
+        if: inputs.project-type == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: ⚙️ Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: 📌 Get current version (Node)
+        if: inputs.project-type == 'node'
+        id: current-version-node
+        run: |
+          VERSION=$(jq -r .version package.json)
+          echo "current=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: 📌 Get current version (Python)
+        if: inputs.project-type == 'python'
+        id: current-version-python
+        run: |
+          if [ -f "pyproject.toml" ]; then
+            VERSION=$(grep -E '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          else
+            VERSION=$(grep -E 'version=' setup.py | sed 's/.*version="\(.*\)".*/\1/')
+          fi
+          echo "current=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: 🔢 Calculate new version
+        id: bump-version
+        run: |
+          CURRENT="${{ steps.current-version-node.outputs.current || steps.current-version-python.outputs.current }}"
+          IFS='.' read -ra V <<< "$CURRENT"
+          MAJOR="${V[0]}"
+          MINOR="${V[1]}"
+          PATCH="${V[2]}"
+          
+          case "${{ inputs.version-bump }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$NEW" >> $GITHUB_OUTPUT
+      
+      - name: 🌿 Create release branch
+        id: create-branch
+        run: |
+          BRANCH="release/v${{ steps.bump-version.outputs.version }}"
+          git checkout -b "$BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+      
+      - name: 📝 Update version (Node)
+        if: inputs.project-type == 'node'
+        run: |
+          npm version ${{ steps.bump-version.outputs.version }} --no-git-tag-version
+          git add package.json package-lock.json 2>/dev/null || git add package.json
+      
+      - name: 📝 Update version (Python)
+        if: inputs.project-type == 'python'
+        run: |
+          NEW="${{ steps.bump-version.outputs.version }}"
+          if [ -f "pyproject.toml" ]; then
+            sed -i "s/^version = .*/version = \"$NEW\"/" pyproject.toml
+            git add pyproject.toml
+          fi
+      
+      - name: 💾 Commit and push
+        run: |
+          git commit -m "chore(release): bump version to ${{ steps.bump-version.outputs.version }}"
+          git push origin ${{ steps.create-branch.outputs.branch }}
+      
+      - name: 🔀 Create PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release v${{ steps.bump-version.outputs.version }}`,
+              head: '${{ steps.create-branch.outputs.branch }}',
+              base: 'main',
+              body: `## 📦 Release v${{ steps.bump-version.outputs.version }}
+            
+            ### Checklist
+            - [ ] CI passes
+            - [ ] Changelog reviewed
+            - [ ] QA approved
+            
+            ${{ inputs.release-notes }}`
+            });
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: ['release']
+            });

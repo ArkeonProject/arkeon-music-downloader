@@ -1,253 +1,78 @@
-# Guía de Despliegue - Rama de Testing
+# Guía de Despliegue
 
-## 🚀 Desplegar Rama en Servidor
+Con la transición a arquitectura Monorepo (Frontend + Backend separados), el despliegue está ideado para ser orquestado exclusivamente vía **Docker Compose**. 
 
-### Opción 1: Docker Compose con Rama Específica
+## Archivos Críticos de Despliegue
 
-#### Método A: Usando docker-compose.test.yml
+El directorio raíz contiene:
+- `docker-compose.yml`: Archivo base principal orientado a producción (utilizado por el CD y despliegues estables vía Portainer o servidores privados).
+- `docker-compose.dev.yml`: Archivo iterativo para pruebas que soporta "hot-reloading".
 
+## Despliegue de Producción (Servidor Linux)
+
+1. Ingresa a tu servidor u orquestador y crea un archivo `docker-compose.yml` utilizando las imágenes publicadas en GHCR:
+
+```yaml
+version: '3.8'
+
+services:
+  reverse-proxy:
+    image: traefik:v3.1
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:8080"
+      - "--accesslog=true"
+    ports:
+      - "8080:8080"
+      - "8081:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  backend:
+    image: ghcr.io/arkeonproject/arkeon-music-downloader/backend:latest
+    volumes:
+      - /mnt/syncthing/music/downloads:/downloads
+      - arkeon_music_db_data:/app/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+
+  frontend:
+    image: ghcr.io/arkeonproject/arkeon-music-downloader/frontend:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+
+volumes:
+  arkeon_music_db_data:
+```
+
+2. Ejecuta el stack:
 ```bash
-# 1. Copiar docker-compose.test.yml a tu servidor
-scp docker-compose.test.yml user@tu-servidor:/ruta/al/proyecto/
-
-# 2. En el servidor, crear/editar .env
-cat > .env << 'EOF'
-PLAYLIST_URL=https://www.youtube.com/playlist?list=TU_PLAYLIST_ID
-HOST_DOWNLOAD_PATH=/mnt/syncthing/music/
-DOWNLOAD_PATH=/downloads
-UID=1000
-GID=1000
-
-# Testing de sincronización bidireccional
-ENABLE_SYNC_DELETIONS=true
-USE_TRASH_FOLDER=true
-TRASH_RETENTION_DAYS=7
-LOG_LEVEL=DEBUG
-EOF
-
-# 3. Ejecutar con el archivo de test
-docker-compose -f docker-compose.test.yml up -d
-
-# 4. Ver logs
-docker-compose -f docker-compose.test.yml logs -f
+docker compose up -d
 ```
 
-#### Método B: Modificar docker-compose.yml Temporal
+3. El Dashboard de la aplicación estará disponible en modo reverso en el puerto configurado (ej: `http://localhost:8080`).
 
+## Volumenes Importantes
+
+El backend requiere persistencia de datos crucial.
+- `/downloads`: Aquí se escriben los archivos `.flac`. Asegúrate de mapear esta ruta contra la carpeta física donde tienes montado Plex o Jellyfin.
+- `/app/data`: Allí FastAPI creará `watcher.db` (base de datos relacional) donde habitan todas las fuentes y pistas.
+
+---
+
+## Actualizaciones y CI/CD
+
+El pipeline CI/CD de GitHub empuja dos imágenes concurrentes cuando se completan merges hacia `main`:
+- `ghcr.io/arkeonproject/arkeon-music-downloader/backend`
+- `ghcr.io/arkeonproject/arkeon-music-downloader/frontend`
+
+Para actualizar tu servidor (sin dependencias de watchtower):
 ```bash
-# En tu servidor, editar docker-compose.yml
-nano docker-compose.yml
-
-# Cambiar la línea de build context a:
-build:
-  context: https://github.com/ArkeonProject/arkeon-music-downloader.git#feature-16-sincronizacion-bidireccional-de-playlist
+docker compose pull
+docker compose up -d
 ```
-
-### Opción 2: Clonar Rama Directamente en Servidor
-
-```bash
-# 1. SSH a tu servidor
-ssh user@tu-servidor
-
-# 2. Clonar el repositorio con la rama específica
-git clone -b feature-16-sincronizacion-bidireccional-de-playlist \
-  https://github.com/ArkeonProject/arkeon-music-downloader.git \
-  arkeon-music-test
-
-# 3. Entrar al directorio
-cd arkeon-music-test
-
-# 4. Configurar .env
-cp env.example .env
-nano .env
-
-# Configurar:
-PLAYLIST_URL=https://www.youtube.com/playlist?list=TU_PLAYLIST
-HOST_DOWNLOAD_PATH=/mnt/syncthing/music/
-ENABLE_SYNC_DELETIONS=true
-USE_TRASH_FOLDER=true
-TRASH_RETENTION_DAYS=7
-LOG_LEVEL=DEBUG
-
-# 5. Ejecutar con Docker Compose
-docker-compose up -d
-
-# 6. Ver logs
-docker logs -f youtube-playlist-watcher
-```
-
-### Opción 3: Portainer con Rama Específica
-
-Si usas Portainer:
-
-#### Paso 1: Crear Stack de Testing
-
-1. Ve a **Stacks** → **Add stack**
-2. Nombre: `arkeon-music-test`
-3. Build method: **Repository**
-4. Repository URL: `https://github.com/ArkeonProject/arkeon-music-downloader`
-5. Repository reference: `refs/heads/feature-16-sincronizacion-bidireccional-de-playlist`
-6. Compose path: `docker-compose.yml`
-
-#### Paso 2: Configurar Variables de Entorno
-
-En la sección "Environment variables":
-
-```
-PLAYLIST_URL=https://www.youtube.com/playlist?list=TU_PLAYLIST
-HOST_DOWNLOAD_PATH=/mnt/syncthing/music/
-DOWNLOAD_PATH=/downloads
-UID=1000
-GID=1000
-ENABLE_SYNC_DELETIONS=true
-USE_TRASH_FOLDER=true
-TRASH_RETENTION_DAYS=7
-LOG_LEVEL=DEBUG
-```
-
-#### Paso 3: Deploy
-
-Click en **Deploy the stack**
-
-### Opción 4: Build Manual de Imagen Docker
-
-```bash
-# 1. En tu máquina local, hacer push de la rama
-git push origin feature-16-sincronizacion-bidireccional-de-playlist
-
-# 2. En el servidor, clonar y construir
-ssh user@tu-servidor
-git clone https://github.com/ArkeonProject/arkeon-music-downloader.git
-cd arkeon-music-downloader
-git checkout feature-16-sincronizacion-bidireccional-de-playlist
-
-# 3. Construir imagen
-docker build -t arkeon-music:test .
-
-# 4. Ejecutar contenedor
-docker run -d \
-  --name arkeon-music-test \
-  -e PLAYLIST_URL="https://www.youtube.com/playlist?list=TU_PLAYLIST" \
-  -e DOWNLOAD_PATH="/downloads" \
-  -e ENABLE_SYNC_DELETIONS=true \
-  -e USE_TRASH_FOLDER=true \
-  -e TRASH_RETENTION_DAYS=7 \
-  -e LOG_LEVEL=DEBUG \
-  -v /mnt/syncthing/music/:/downloads \
-  arkeon-music:test
-
-# 5. Ver logs
-docker logs -f arkeon-music-test
-```
-
-## 🔍 Verificación
-
-### Verificar que está usando la rama correcta
-
-```bash
-# Entrar al contenedor
-docker exec -it youtube-playlist-watcher bash
-
-# Verificar versión/rama (si agregaste info al código)
-cat /app/src/youtube_watcher/__init__.py
-
-# Ver logs de inicio
-docker logs youtube-playlist-watcher 2>&1 | grep "Sincronización bidireccional"
-```
-
-Deberías ver:
-```
-Sincronización bidireccional habilitada (trash=True, retention=7d)
-```
-
-### Verificar Funcionalidad
-
-```bash
-# Ver archivos en el servidor
-ls -lh /mnt/syncthing/music/
-
-# Ver carpeta .trash si se crea
-ls -lh /mnt/syncthing/music/.trash/
-
-# Ver estado persistente
-cat /mnt/syncthing/music/.downloaded.json | jq
-```
-
-## 🧹 Limpieza Después de Testing
-
-### Si usaste docker-compose.test.yml
-
-```bash
-docker-compose -f docker-compose.test.yml down
-docker-compose -f docker-compose.test.yml down -v  # Eliminar volúmenes también
-```
-
-### Si usaste stack separado
-
-```bash
-# Detener y eliminar contenedor
-docker stop arkeon-music-test
-docker rm arkeon-music-test
-
-# Eliminar imagen de test (opcional)
-docker rmi arkeon-music:test
-```
-
-### Volver a Main
-
-```bash
-# Cambiar de vuelta a main
-cd arkeon-music-downloader
-git checkout main
-docker-compose up -d --build
-```
-
-## 📊 Monitoreo Durante Testing
-
-```bash
-# Ver logs en tiempo real
-docker logs -f youtube-playlist-watcher
-
-# Filtrar logs de sync
-docker logs youtube-playlist-watcher 2>&1 | grep "🗑️"
-
-# Ver uso de recursos
-docker stats youtube-playlist-watcher
-
-# Ver archivos creados recientemente
-find /mnt/syncthing/music/ -type f -mmin -60  # Últimos 60 minutos
-```
-
-## ⚠️ Recomendaciones
-
-1. **Usa un directorio de prueba** diferente al de producción:
-   ```bash
-   HOST_DOWNLOAD_PATH=/mnt/syncthing/music-test/
-   ```
-
-2. **Configura retención corta** para testing rápido:
-   ```bash
-   TRASH_RETENTION_DAYS=1  # 1 día en lugar de 7
-   ```
-
-3. **Habilita logs DEBUG** para ver todo:
-   ```bash
-   LOG_LEVEL=DEBUG
-   ```
-
-4. **Usa una playlist de prueba** pequeña, no tu playlist principal
-
-5. **Monitorea los primeros días** antes de confiar completamente
-
-## 🎯 Checklist de Testing en Servidor
-
-- [ ] Rama desplegada correctamente
-- [ ] Logs muestran "Sincronización bidireccional habilitada"
-- [ ] Nueva canción se descarga correctamente
-- [ ] Canción eliminada se mueve a `.trash/`
-- [ ] Archivo en `.trash/` tiene timestamp correcto
-- [ ] Auto-limpieza funciona después del período de retención
-- [ ] No hay errores en logs
-- [ ] Permisos de archivos son correctos
-
-Una vez validado todo, puedes hacer merge a main y actualizar tu servidor a la versión estable! 🚀

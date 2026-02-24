@@ -31,18 +31,20 @@ COPY src ./src
 # Asegurar que los módulos del paquete estén en el PYTHONPATH
 ENV PYTHONPATH="/app/src"
 
-# Crear directorio de descargas
-RUN mkdir -p /downloads
+# Crear directorio de descargas y base de datos con permisos abiertos
+RUN mkdir -p /downloads /app/data && chmod -R 777 /downloads /app/data
 
 # Ejecutará con un usuario mapeado desde docker-compose (UID/GID)
 
 # Variables de entorno por defecto
-ENV PLAYLIST_URL=""
 ENV DOWNLOAD_PATH="/downloads"
 ENV OBSERVER_INTERVAL_MS="60000"
 
-# Volumen para descargas
-VOLUME ["/downloads"]
+# Exponer puerto de la API
+EXPOSE 8000
 
-# Comando por defecto
-CMD ["python", "-m", "youtube_watcher"]
+# Volumen para descargas
+VOLUME ["/downloads", "/data"]
+
+# Comando por defecto para iniciar FastAPI backend
+CMD ["uvicorn", "src.youtube_watcher.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

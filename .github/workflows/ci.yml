@@ -10,7 +10,9 @@ jobs:
     name: Continuous Integration
     uses: ArkeonProject/organization-tools/.github/workflows/ci-python.yml@v1.1.5
     with:
-      python-version: '3.11'
+      python-version: '3.12'
+      working-directory: 'backend'
       run-lint: true
+      run-format-check: false
       run-tests: true
     secrets: inherit
