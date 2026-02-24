@@ -8,25 +8,25 @@ help:
 
 setup:
 	cd backend && $(PY) -m venv venv
-	cd backend && . venv/bin/activate && $(PIP) install --upgrade pip
+	. backend/venv/bin/activate && $(PIP) install --upgrade pip
 
 install:
-	cd backend && . venv/bin/activate && $(PIP) install -r requirements.txt
+	. backend/venv/bin/activate && $(PIP) install -r backend/requirements.txt
 
 dev:
-	cd backend && . venv/bin/activate && $(PIP) install -r requirements.txt && $(PIP) install -e '.[dev]'
+	. backend/venv/bin/activate && $(PIP) install -r backend/requirements.txt && $(PIP) install -e '.[dev]'
 
 fmt:
-	cd backend && . venv/bin/activate && black src tests scripts --line-length 88
+	. backend/venv/bin/activate && black backend/src backend/tests --line-length 88
 
 lint:
-	cd backend && . venv/bin/activate && flake8 src tests --max-line-length=88
+	. backend/venv/bin/activate && flake8 backend/src backend/tests --max-line-length=88
 
 type:
-	cd backend && . venv/bin/activate && mypy src
+	. backend/venv/bin/activate && mypy backend/src
 
 test:
-	cd backend && . venv/bin/activate && PYTHONPATH=src pytest -q
+	. backend/venv/bin/activate && PYTHONPATH=backend/src pytest -q
 
 run:
 	cd backend && . venv/bin/activate && uvicorn src.youtube_watcher.api.main:app
