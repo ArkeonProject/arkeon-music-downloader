@@ -14,7 +14,7 @@ services:
       - COOKIES_FILE=/data/cookies.txt
     volumes:
       - ${HOST_DOWNLOAD_PATH:-./downloads}:/downloads
-      - ./data:/data
+      - music-data:/data
     networks:
       - music-internal
     restart: unless-stopped
@@ -47,3 +47,6 @@ networks:
     driver: bridge
   proxy-internal:
     external: true
+
+volumes:
+  music-data:
