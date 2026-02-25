@@ -78,7 +78,7 @@ class YouTubeDownloader:
             or video_data.get("channel")
             or video_data.get("uploader", "Unknown Artist")
         )
-        album = video_data.get("album", f"YouTube - {artist}")
+        album = video_data.get("album") or artist
         upload_date = video_data.get("upload_date")
         year = upload_date[:4] if upload_date and len(upload_date) >= 4 else None
         # Resolver URL de portada

@@ -4,7 +4,7 @@ import yt_dlp
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("DateBackfill")
+logger = logging.getLogger("MetadataBackfill")
 
 DB_PATH = Path("data/arkeon.db")
 
@@ -16,42 +16,47 @@ def main():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Obtener todas las canciones completadas que no tienen fecha de publicación
-    cursor.execute("SELECT id, youtube_id, title FROM tracks WHERE download_status='completed' AND (published_at IS NULL OR published_at = '')")
+    # Obtener todas las canciones completadas para revisar si el artista está mal o falta fecha
+    cursor.execute("SELECT id, youtube_id, title, artist, published_at FROM tracks WHERE download_status='completed'")
     tracks = cursor.fetchall()
     
     if not tracks:
-        logger.info("🎉 ¡No hay canciones pendientes de revisar! Todas tienen fecha.")
+        logger.info("🎉 ¡No hay canciones en la base de datos!")
         return
 
-    logger.info(f"🔎 Encontradas {len(tracks)} canciones antiguas sin fecha de Salida Oficial.")
-    logger.info("Comenzando el proceso de recuperación desde YouTube...")
+    logger.info(f"🔎 Analizando metadatos de {len(tracks)} canciones en Youtube...")
 
     ydl_opts = {
-        "extract_flat": False, # necesitamos la info completa
+        "extract_flat": False,
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        for idx, (db_id, y_id, title) in enumerate(tracks, 1):
+        for idx, (db_id, y_id, title, current_artist, current_date) in enumerate(tracks, 1):
             url = f"https://www.youtube.com/watch?v={y_id}"
             try:
                 info = ydl.extract_info(url, download=False)
                 upload_date = info.get("upload_date")
+                year = upload_date[:4] if upload_date and len(upload_date) >= 4 else "—"
                 
-                if upload_date and len(upload_date) >= 4:
-                    year = upload_date[:4]
-                    cursor.execute("UPDATE tracks SET published_at=? WHERE id=?", (year, db_id))
+                # Fetch best possible artist
+                yt_artist = (
+                    info.get("artist")
+                    or info.get("channel")
+                    or info.get("uploader", "Unknown Artist")
+                )
+
+                needs_update = False
+                # Verificamos si hay discrepancia de artista o fecha
+                if current_artist != yt_artist or current_date != year:
+                    cursor.execute(
+                        "UPDATE tracks SET published_at=?, artist=? WHERE id=?", 
+                        (year, yt_artist, db_id)
+                    )
                     conn.commit()
-                    logger.info(f"[{idx}/{len(tracks)}] ✅ Actualizada: '{title}' -> Año {year}")
-                else:
-                    # Rellenar con 'Desconocido' para no volver a intentarlo indefinidamente
-                    cursor.execute("UPDATE tracks SET published_at='—' WHERE id=?", (db_id,))
-                    conn.commit()
-                    logger.info(f"[{idx}/{len(tracks)}] ⚠️ Sin fecha en YouTube: '{title}'")
-                    
+                    logger.info(f"[{idx}/{len(tracks)}] ✅ DB Actualizada: '{title}' -> Artista: {yt_artist} | Fecha: {year}")
             except Exception as e:
                 logger.error(f"[{idx}/{len(tracks)}] ❌ Error con '{title}': {e}")
 
