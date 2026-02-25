@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar código Python
 COPY src ./src
+COPY backfill_dates.py ./backfill_dates.py
 
 # Asegurar que los módulos del paquete estén en el PYTHONPATH
 ENV PYTHONPATH="/app/src"
