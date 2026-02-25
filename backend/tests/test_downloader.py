@@ -13,7 +13,7 @@ def test_download_and_convert_success(monkeypatch, tmp_path):
 
     def mock_download(video_data, title):
         temp_file.write_text("opus")
-        return temp_file
+        return temp_file, {"upload_date": "20230101"}
 
     def mock_convert(opus_path, output_path, title):
         output_path.write_text("flac")
@@ -62,6 +62,10 @@ def test_download_opus_returns_downloaded_file(monkeypatch, tmp_path):
 
         def download(self, urls):
             (tmp_path / f"temp_{video_id}.webm").write_text("data")
+            
+        def extract_info(self, url, download=True):
+            (tmp_path / f"temp_{video_id}.webm").write_text("data")
+            return {"upload_date": "20230101"}
 
     monkeypatch.setattr(
         downloader_module.yt_dlp, "YoutubeDL", lambda opts: DummyYDL(opts)
@@ -70,8 +74,9 @@ def test_download_opus_returns_downloaded_file(monkeypatch, tmp_path):
     # Reinicializar downloader para que coja el mock
     downloader._ydl = DummyYDL({})
 
-    path = downloader._download_opus({"id": video_id}, "Test Title")
+    path, info = downloader._download_opus({"id": video_id}, "Test Title")
 
     assert path is not None
     assert path.name == f"temp_{video_id}.webm"
     assert path.exists()
+    assert info.get("upload_date") == "20230101"
