@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from sqlalchemy import text
 
 from ..db.database import engine, Base
 from . import routes
@@ -11,8 +12,6 @@ from ..watcher import YouTubeWatcher
 from . import deps
 
 logger = logging.getLogger(__name__)
-
-from sqlalchemy import text
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
