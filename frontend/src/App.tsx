@@ -34,6 +34,7 @@ function App() {
   const [totalTracks, setTotalTracks] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [availableArtists, setAvailableArtists] = useState<string[]>([]);
+  const [availableYears, setAvailableYears] = useState<string[]>([]);
 
   // Add form
   const [addUrl, setAddUrl] = useState('');
@@ -45,6 +46,7 @@ function App() {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [artistFilter, setArtistFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState<number | ''>('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -73,12 +75,14 @@ function App() {
       if (filter !== 'all') queryParams.append('status', filter);
       if (search) queryParams.append('search', search);
       if (artistFilter) queryParams.append('artist', artistFilter);
+      if (yearFilter) queryParams.append('year', yearFilter);
       if (sourceFilter !== '') queryParams.append('source_id', sourceFilter.toString());
 
-      const [s, t, a, c, st] = await Promise.all([
+      const [s, t, a, y, c, st] = await Promise.all([
         fetch(`${API}/sources`).then(r => r.json()),
         fetch(`${API}/tracks?${queryParams.toString()}`).then(r => r.json()),
         fetch(`${API}/tracks/artists`).then(r => r.json()),
+        fetch(`${API}/tracks/years`).then(r => r.json()),
         fetch(`${API}/config/cookies`).then(r => r.json()),
         fetch(`${API}/tracks/stats`).then(r => r.json()),
       ]);
@@ -87,6 +91,7 @@ function App() {
       setTotalTracks(t.total || 0);
       setTotalPages(t.pages || 1);
       setAvailableArtists(a || []);
+      setAvailableYears(y || []);
       setHasCookies(c.exists);
       setStats(st || { completed: 0, pending: 0, failed: 0, ignored: 0 });
     } catch (e) { console.error(e); }
@@ -96,7 +101,7 @@ function App() {
     fetchData();
     const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
-  }, [page, pageSize, filter, search, artistFilter, sourceFilter, sortBy, sortOrder]);
+  }, [page, pageSize, filter, search, artistFilter, yearFilter, sourceFilter, sortBy, sortOrder]);
 
   // ─── Stats ──────────────────────────────────
   const activeSources = sources.filter(s => s.status === 'active').length;
@@ -277,6 +282,10 @@ function App() {
           <select className="filter-select" value={artistFilter} onChange={e => { setArtistFilter(e.target.value); setPage(1); }}>
             <option value="">👤 Todos los Artistas</option>
             {availableArtists.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select className="filter-select" value={yearFilter} onChange={e => { setYearFilter(e.target.value); setPage(1); }}>
+            <option value="">📅 Todos los Años</option>
+            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <select className="filter-select" value={sourceFilter} onChange={e => { setSourceFilter(e.target.value ? Number(e.target.value) : ''); setPage(1); }}>
             <option value="">📋 Todas las Playlists</option>

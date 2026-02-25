@@ -122,9 +122,13 @@ class YouTubeWatcher:
             or video_data.get("uploader", "Unknown Artist")
         )
         upload_date = video_data.get("upload_date")
-        year = upload_date[:4] if upload_date and len(upload_date) >= 4 else None
+        formatted_date = None
+        if upload_date and len(upload_date) == 8:
+            formatted_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+        elif upload_date:
+            formatted_date = upload_date
         
-        return video_id, raw_title, title, artist, year, is_invalid
+        return video_id, raw_title, title, artist, formatted_date, is_invalid
 
     def _process_video(self, video_data: Dict, source_id: int, db):
         video_id, raw_title, title, artist, published_at, is_invalid = self._normalize_video_entry(video_data)

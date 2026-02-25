@@ -80,7 +80,11 @@ class YouTubeDownloader:
         )
         album = video_data.get("album") or artist
         upload_date = video_data.get("upload_date")
-        year = upload_date[:4] if upload_date and len(upload_date) >= 4 else None
+        formatted_date = None
+        if upload_date and len(upload_date) == 8:
+            formatted_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+        elif upload_date:
+            formatted_date = upload_date
         # Resolver URL de portada
         thumbnail_url = video_data.get("thumbnail")
         if not thumbnail_url:
@@ -135,8 +139,10 @@ class YouTubeDownloader:
         
         if full_info:
             new_upload_date = full_info.get("upload_date")
-            if new_upload_date and len(new_upload_date) >= 4:
-                year = new_upload_date[:4]
+            if new_upload_date and len(new_upload_date) == 8:
+                formatted_date = f"{new_upload_date[:4]}-{new_upload_date[4:6]}-{new_upload_date[6:8]}"
+            elif new_upload_date:
+                formatted_date = new_upload_date
 
         # Paso 2: Convertir a FLAC
         if not self._convert_to_flac(temp_opus, output_path, title):
@@ -147,7 +153,7 @@ class YouTubeDownloader:
 
         # Paso 3: Añadir metadatos y portada
         self.metadata_handler.add_metadata_and_cover(
-            output_path, title, artist, album, year, thumbnail_url
+            output_path, title, artist, album, formatted_date, thumbnail_url
         )
 
         logger.info(f"FLAC listo: {filename}")
@@ -156,7 +162,7 @@ class YouTubeDownloader:
             "filename": filename,
             "title": title,
             "artist": artist,
-            "published_at": year,
+            "published_at": formatted_date,
         }
 
     def _download_opus(self, video_data: Dict, title: str) -> Optional[tuple[Path, Dict]]:
