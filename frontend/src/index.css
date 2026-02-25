@@ -258,15 +258,21 @@ body {
   border-color: transparent;
 }
 
-/* ─── Track List ───────────────────────────────── */
-.track-list {
+/* ─── Track Table ───────────────────────────────── */
+.track-table-container {
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow-x: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--panel-border);
 }
 
-.track-header {
-  display: grid;
-  grid-template-columns: 1fr 160px 110px 100px 70px;
+.track-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.track-table th {
   padding: 12px 20px;
   font-size: 11px;
   font-weight: 600;
@@ -274,23 +280,37 @@ body {
   letter-spacing: 0.8px;
   color: var(--text-muted);
   border-bottom: 1px solid var(--panel-border);
+  user-select: none;
+  transition: color 0.15s, background 0.15s;
 }
 
-.track-row {
-  display: grid;
-  grid-template-columns: 1fr 160px 110px 100px 70px;
+.track-table th.sortable:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+}
+
+.track-table th .sort-icon {
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+.track-table td {
   padding: 14px 20px;
-  align-items: center;
   border-bottom: 1px solid rgba(55, 65, 81, 0.2);
+  vertical-align: middle;
+}
+
+.track-table tr:last-child td {
+  border-bottom: none;
+}
+
+.track-table tbody tr {
   transition: background 0.15s;
 }
 
-.track-row:hover {
+.track-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.02);
-}
-
-.track-row:last-child {
-  border-bottom: none;
 }
 
 .track-title {

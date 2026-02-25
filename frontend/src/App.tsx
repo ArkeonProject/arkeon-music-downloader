@@ -59,6 +59,9 @@ function App() {
   const [hasCookies, setHasCookies] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  // Global Stats
+  const [stats, setStats] = useState({ completed: 0, pending: 0, failed: 0, ignored: 0 });
+
   const fetchData = async () => {
     try {
       const queryParams = new URLSearchParams({
@@ -72,11 +75,12 @@ function App() {
       if (artistFilter) queryParams.append('artist', artistFilter);
       if (sourceFilter !== '') queryParams.append('source_id', sourceFilter.toString());
 
-      const [s, t, a, c] = await Promise.all([
+      const [s, t, a, c, st] = await Promise.all([
         fetch(`${API}/sources`).then(r => r.json()),
         fetch(`${API}/tracks?${queryParams.toString()}`).then(r => r.json()),
         fetch(`${API}/tracks/artists`).then(r => r.json()),
         fetch(`${API}/config/cookies`).then(r => r.json()),
+        fetch(`${API}/tracks/stats`).then(r => r.json()),
       ]);
       setSources(s);
       setTracks(t.items || []);
@@ -84,6 +88,7 @@ function App() {
       setTotalPages(t.pages || 1);
       setAvailableArtists(a || []);
       setHasCookies(c.exists);
+      setStats(st || { completed: 0, pending: 0, failed: 0, ignored: 0 });
     } catch (e) { console.error(e); }
   };
 
@@ -94,10 +99,6 @@ function App() {
   }, [page, pageSize, filter, search, artistFilter, sourceFilter, sortBy, sortOrder]);
 
   // ─── Stats ──────────────────────────────────
-  const completed = tracks.filter(t => t.download_status === 'completed').length;
-  const pending = tracks.filter(t => t.download_status === 'pending').length;
-  const failed = tracks.filter(t => t.download_status === 'failed').length;
-  const ignored = tracks.filter(t => t.download_status === 'ignored').length;
   const activeSources = sources.filter(s => s.status === 'active').length;
 
   // ─── Filtered tracks ────────────────────────
@@ -162,6 +163,21 @@ function App() {
     fetchData();
   };
 
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortBy(column);
+      setSortOrder('desc');
+    }
+    setPage(1);
+  };
+
+  const SortIcon = ({ column }: { column: string }) => {
+    if (sortBy !== column) return null;
+    return <span className="sort-icon">{sortOrder === 'desc' ? '↓' : '↑'}</span>;
+  };
+
   // ─── Badge label ────────────────────────────
   const badgeLabel = (s: string) =>
     s === 'completed' ? 'Descargada' :
@@ -222,11 +238,11 @@ function App() {
 
       {/* ─── Stats Bar ───────────────────────── */}
       <div className="stats-bar">
-        <div className="stat">🎵 <span className="stat-value">{completed}</span> descargadas</div>
+        <div className="stat">🎵 <span className="stat-value">{stats.completed}</span> descargadas</div>
         <div className="stat">📡 <span className="stat-value">{activeSources}</span> fuentes</div>
-        {pending > 0 && <div className="stat">⏳ <span className="stat-value">{pending}</span> pendientes</div>}
-        {failed > 0 && <div className="stat">❌ <span className="stat-value">{failed}</span> fallidas</div>}
-        {ignored > 0 && <div className="stat">🚫 <span className="stat-value">{ignored}</span> ignoradas</div>}
+        {stats.pending > 0 && <div className="stat">⏳ <span className="stat-value">{stats.pending}</span> pendientes</div>}
+        {stats.failed > 0 && <div className="stat">❌ <span className="stat-value">{stats.failed}</span> fallidas</div>}
+        {stats.ignored > 0 && <div className="stat">🚫 <span className="stat-value">{stats.ignored}</span> ignoradas</div>}
       </div>
 
       {/* ─── Toolbar ─────────────────────────── */}
@@ -268,76 +284,96 @@ function App() {
           </select>
 
           <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', marginLeft: 'auto', marginRight: '5px' }}>Por pág:</span>
-          <select className="filter-select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} style={{ padding: '8px', marginRight: '10px' }}>
+          <select className="filter-select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} style={{ padding: '8px' }}>
             <option value="10">10</option>
             <option value="20">20</option>
             <option value="50">50</option>
             <option value="100">100</option>
           </select>
-
-          <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', marginRight: '5px' }}>Ordenar:</span>
-          <select className="filter-select" value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}>
-            <option value="created_at">Fecha añadido</option>
-            <option value="downloaded_at">Fecha descarga</option>
-            <option value="published_at">Antigüedad (YouTube)</option>
-          </select>
-          <select className="filter-select" value={sortOrder} onChange={e => { setSortOrder(e.target.value); setPage(1); }} style={{ width: '130px' }}>
-            <option value="desc">↓ Más reciente</option>
-            <option value="asc">↑ Más antiguo</option>
-          </select>
         </div>
       </div>
 
-      {/* ─── Track List ──────────────────────── */}
-      <div className="card track-list">
-        <div className="track-header">
-          <span>Título</span>
-          <span>Fuente</span>
-          <span>Estado</span>
-          <span>Fecha</span>
-          <span></span>
-        </div>
+      {/* ─── Track List (Table) ──────────────── */}
+      <div className="track-table-container">
+        <table className="track-table">
+          <thead>
+            <tr>
+              <th className="sortable" onClick={() => handleSort('title')}>
+                Canción <SortIcon column="title" />
+              </th>
+              <th className="sortable" onClick={() => handleSort('source_id')} style={{ width: '160px' }}>
+                Fuente <SortIcon column="source_id" />
+              </th>
+              <th style={{ width: '110px' }}>Estado</th>
+              <th className="sortable" onClick={() => handleSort('downloaded_at')} style={{ width: '130px' }}>
+                Descarga <SortIcon column="downloaded_at" />
+              </th>
+              <th className="sortable" onClick={() => handleSort('published_at')} style={{ width: '140px' }}>
+                Salida Oficial <SortIcon column="published_at" />
+              </th>
+              <th style={{ width: '70px' }}></th>
+            </tr>
+          </thead>
 
-        {filtered.length === 0 ? (
-          <div className="empty-state">
-            <div className="icon">🎶</div>
-            <p>{tracks.length === 0 ? 'Añade una playlist o canción para empezar' : 'Sin resultados'}</p>
-          </div>
-        ) : (
-          filtered.map(t => (
-            <div className="track-row" key={t.id}>
-              <div className="track-title">
-                <a href={`https://youtube.com/watch?v=${t.youtube_id}`} target="_blank" rel="noreferrer">
-                  {t.title}
-                </a>
-                {(t.artist || t.published_at) && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    {t.artist && <span style={{ marginRight: '8px' }}>👤 {t.artist}</span>}
-                    {t.published_at && <span>📅 {t.published_at}</span>}
+          {filtered.length === 0 ? (
+            <tbody>
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>
+                  <div className="empty-state">
+                    <div className="icon">🎶</div>
+                    <p>{tracks.length === 0 ? 'Añade una playlist o canción para empezar' : 'Sin resultados'}</p>
                   </div>
-                )}
-              </div>
-              <div className="track-source">{t.source_name || '—'}</div>
-              <div>
-                <span className={`badge badge-${t.download_status}`}>
-                  {badgeLabel(t.download_status)}
-                </span>
-              </div>
-              <div className="track-date">{formatDate(t.created_at)}</div>
-              <div className="track-actions">
-                {t.download_status === 'ignored' || t.download_status === 'failed' ? (
-                  <button className="icon-btn restore" onClick={() => handleRestore(t.id)} title={t.download_status === 'failed' ? 'Reintentar' : 'Restaurar'}>
-                    ♻️
-                  </button>
-                ) : (
-                  <button className="icon-btn danger" onClick={() => setDeleteTarget(t)} title="Eliminar">
-                    🗑
-                  </button>
-                )}
-              </div>
-            </div>
-          ))
-        )}
+                </td>
+              </tr>
+            </tbody>
+          ) : (
+            <tbody>
+              {filtered.map(t => (
+                <tr key={t.id}>
+                  <td>
+                    <div className="track-title">
+                      <a href={`https://youtube.com/watch?v=${t.youtube_id}`} target="_blank" rel="noreferrer">
+                        {t.title}
+                      </a>
+                      {t.artist && (
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          <span style={{ marginRight: '8px' }}>👤 {t.artist}</span>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="track-source" title={t.source_name || ''}>{t.source_name || '—'}</div>
+                  </td>
+                  <td>
+                    <span className={`badge badge-${t.download_status}`}>
+                      {badgeLabel(t.download_status)}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="track-date">{formatDate(t.created_at)}</div>
+                  </td>
+                  <td>
+                    <div className="track-date">{t.published_at ? t.published_at : '—'}</div>
+                  </td>
+                  <td>
+                    <div className="track-actions">
+                      {t.download_status === 'ignored' || t.download_status === 'failed' ? (
+                        <button className="icon-btn restore" onClick={() => handleRestore(t.id)} title={t.download_status === 'failed' ? 'Reintentar' : 'Restaurar'}>
+                          ♻️
+                        </button>
+                      ) : (
+                        <button className="icon-btn danger" onClick={() => setDeleteTarget(t)} title="Eliminar">
+                          🗑
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          )}
+        </table>
       </div>
 
       {/* ─── Pagination ──────────────────────── */}
