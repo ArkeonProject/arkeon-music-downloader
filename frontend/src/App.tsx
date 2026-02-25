@@ -345,7 +345,7 @@ function App() {
                         {t.title}
                       </a>
                       {t.artist && (
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           <span style={{ marginRight: '8px' }}>👤 {t.artist}</span>
                         </div>
                       )}
