@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 from pydantic import BaseModel
 from datetime import datetime
@@ -124,11 +125,18 @@ def get_tracks(
     if source_id:
         query = query.filter(Track.source_id == source_id)
     if artist:
-        query = query.filter(Track.artist == artist)
+        query = query.filter(Track.artist.ilike(f"%{artist}%"))
     if search:
         query = query.filter(Track.title.ilike(f"%{search}%"))
         
-    valid_sort_columns = {"created_at": Track.created_at, "downloaded_at": Track.downloaded_at, "published_at": Track.published_at}
+    valid_sort_columns = {
+        "created_at": Track.created_at, 
+        "downloaded_at": Track.downloaded_at, 
+        "published_at": Track.published_at,
+        "title": Track.title,
+        "artist": Track.artist,
+        "source_id": Track.source_id
+    }
     sort_column = valid_sort_columns.get(sort_by, Track.created_at)
     
     if sort_order.lower() == "asc":
@@ -152,6 +160,21 @@ def get_tracks(
         result.append(data)
     
     return {"items": result, "total": total, "page": page, "pages": pages}
+
+@router.get("/tracks/stats")
+def get_track_stats(db: Session = Depends(get_db)):
+    """Get global counts of tracks by status"""
+    counts = dict(
+        db.query(Track.download_status, func.count(Track.id))
+        .group_by(Track.download_status)
+        .all()
+    )
+    return {
+        "completed": counts.get("completed", 0),
+        "pending": counts.get("pending", 0),
+        "failed": counts.get("failed", 0),
+        "ignored": counts.get("ignored", 0),
+    }
 
 @router.get("/tracks/artists", response_model=List[str])
 def get_artists(db: Session = Depends(get_db)):
