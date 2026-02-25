@@ -12,8 +12,23 @@ from . import deps
 
 logger = logging.getLogger(__name__)
 
+from sqlalchemy import text
+
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+# Run simple migrations for new columns
+try:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN published_at VARCHAR"))
+except Exception:
+    pass
+
+try:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN artist VARCHAR"))
+except Exception:
+    pass
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

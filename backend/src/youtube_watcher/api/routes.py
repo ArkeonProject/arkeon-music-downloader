@@ -41,9 +41,17 @@ class TrackResponse(BaseModel):
     download_status: str
     downloaded_at: datetime | None
     created_at: datetime
+    published_at: str | None = None
+    artist: str | None = None
 
     class Config:
         from_attributes = True
+
+class PaginatedTracks(BaseModel):
+    items: List[TrackResponse]
+    total: int
+    page: int
+    pages: int
 
 class SingleDownloadRequest(BaseModel):
     url: str
@@ -96,26 +104,43 @@ def update_source_status(source_id: int, status: str, db: Session = Depends(get_
 
 # --- Track Routes ---
 
-@router.get("/tracks")
+@router.get("/tracks", response_model=PaginatedTracks)
 def get_tracks(
-    skip: int = 0,
-    limit: int = 500,
+    page: int = 1,
+    page_size: int = 50,
     status: str | None = None,
     source_id: int | None = None,
+    artist: str | None = None,
     search: str | None = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
     db: Session = Depends(get_db)
 ):
-    """List downloaded and pending tracks with optional filters"""
+    """List downloaded and pending tracks with optional filters and pagination"""
     query = db.query(Track)
     
-    if status:
+    if status and status != 'all':
         query = query.filter(Track.download_status == status)
     if source_id:
         query = query.filter(Track.source_id == source_id)
+    if artist:
+        query = query.filter(Track.artist == artist)
     if search:
         query = query.filter(Track.title.ilike(f"%{search}%"))
+        
+    valid_sort_columns = {"created_at": Track.created_at, "downloaded_at": Track.downloaded_at, "published_at": Track.published_at}
+    sort_column = valid_sort_columns.get(sort_by, Track.created_at)
     
-    tracks = query.order_by(Track.created_at.desc()).offset(skip).limit(limit).all()
+    if sort_order.lower() == "asc":
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
+        
+    total = query.count()
+    pages = (total + page_size - 1) // page_size if page_size > 0 else 0
+    
+    skip = (page - 1) * page_size
+    tracks = query.offset(skip).limit(page_size).all()
     
     # Enrich with source name
     result = []
@@ -126,7 +151,15 @@ def get_tracks(
             data["source_type"] = t.source.type
         result.append(data)
     
-    return result
+    return {"items": result, "total": total, "page": page, "pages": pages}
+
+@router.get("/tracks/artists", response_model=List[str])
+def get_artists(db: Session = Depends(get_db)):
+    """Get unique list of artists for filtering"""
+    artists = db.query(Track.artist).filter(Track.artist.isnot(None)).distinct().all()
+    # Filter out empty strings if any crept in
+    valid_artists = [a[0] for a in artists if a[0] and a[0].strip()]
+    return sorted(valid_artists)
 
 @router.post("/tracks/download-single")
 def trigger_single_download(req: SingleDownloadRequest, db: Session = Depends(get_db)):
