@@ -192,6 +192,10 @@ class YouTubeWatcher:
                 existing_track.downloaded_at = datetime.utcnow()
                 existing_track.title = result.get("title", display_title)
                 
+                # Update published_at if acquired during full download
+                if result.get("published_at"):
+                    existing_track.published_at = result.get("published_at")
+                
                 self.failed_downloads.pop(video_id, None)
                 db.commit()
                 logger.info(f"✅ Descarga completada: {existing_track.title}")
