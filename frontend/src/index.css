@@ -223,6 +223,12 @@ body {
   outline: none;
   cursor: pointer;
   transition: all 0.2s;
+  flex: 1 1 0;
+  min-width: 100px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filter-select:focus {
