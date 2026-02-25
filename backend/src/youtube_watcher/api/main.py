@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from sqlalchemy import text
 
 from ..db.database import engine, Base
 from . import routes
@@ -14,6 +15,19 @@ logger = logging.getLogger(__name__)
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+# Run simple migrations for new columns
+try:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN published_at VARCHAR"))
+except Exception:
+    pass
+
+try:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN artist VARCHAR"))
+except Exception:
+    pass
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -21,6 +21,8 @@ interface Track {
   download_status: string;
   downloaded_at: string | null;
   created_at: string;
+  published_at: string | null;
+  artist: string | null;
 }
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -29,15 +31,25 @@ function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
 
+  const [totalTracks, setTotalTracks] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [availableArtists, setAvailableArtists] = useState<string[]>([]);
+
   // Add form
   const [addUrl, setAddUrl] = useState('');
   const [addType, setAddType] = useState('playlist');
   const [addName, setAddName] = useState('');
   const [adding, setAdding] = useState(false);
 
-  // Filters
+  // Filters & Pagination
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [artistFilter, setArtistFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<number | ''>('');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   // Modals
   const [deleteTarget, setDeleteTarget] = useState<Track | null>(null);
@@ -49,13 +61,28 @@ function App() {
 
   const fetchData = async () => {
     try {
-      const [s, t, c] = await Promise.all([
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      });
+      if (filter !== 'all') queryParams.append('status', filter);
+      if (search) queryParams.append('search', search);
+      if (artistFilter) queryParams.append('artist', artistFilter);
+      if (sourceFilter !== '') queryParams.append('source_id', sourceFilter.toString());
+
+      const [s, t, a, c] = await Promise.all([
         fetch(`${API}/sources`).then(r => r.json()),
-        fetch(`${API}/tracks`).then(r => r.json()),
+        fetch(`${API}/tracks?${queryParams.toString()}`).then(r => r.json()),
+        fetch(`${API}/tracks/artists`).then(r => r.json()),
         fetch(`${API}/config/cookies`).then(r => r.json()),
       ]);
       setSources(s);
-      setTracks(t);
+      setTracks(t.items || []);
+      setTotalTracks(t.total || 0);
+      setTotalPages(t.pages || 1);
+      setAvailableArtists(a || []);
       setHasCookies(c.exists);
     } catch (e) { console.error(e); }
   };
@@ -64,7 +91,7 @@ function App() {
     fetchData();
     const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [page, pageSize, filter, search, artistFilter, sourceFilter, sortBy, sortOrder]);
 
   // ─── Stats ──────────────────────────────────
   const completed = tracks.filter(t => t.download_status === 'completed').length;
@@ -74,11 +101,9 @@ function App() {
   const activeSources = sources.filter(s => s.status === 'active').length;
 
   // ─── Filtered tracks ────────────────────────
-  const filtered = tracks.filter(t => {
-    if (filter !== 'all' && t.download_status !== filter) return false;
-    if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  // The server now processes the filtering and pagination, so `tracks` already contains
+  // the correctly filtered and paginated items.
+  const filtered = tracks;
 
   // ─── Handlers ───────────────────────────────
   const handleAdd = async (e: React.FormEvent) => {
@@ -205,29 +230,61 @@ function App() {
       </div>
 
       {/* ─── Toolbar ─────────────────────────── */}
-      <div className="toolbar">
-        <input
-          className="search-input"
-          placeholder="Buscar..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        <div className="filter-chips">
-          {[
-            { key: 'all', label: 'Todas' },
-            { key: 'completed', label: 'Descargadas' },
-            { key: 'pending', label: 'Pendientes' },
-            { key: 'failed', label: 'Fallidas' },
-            { key: 'ignored', label: 'Ignoradas' },
-          ].map(f => (
-            <button
-              key={f.key}
-              className={`chip ${filter === f.key ? 'active' : ''}`}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label}
-            </button>
-          ))}
+      <div className="toolbar" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+        <div style={{ display: 'flex', gap: '15px', justifyContent: 'space-between', alignItems: 'center' }}>
+          <input
+            className="search-input"
+            placeholder="Buscar..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+          />
+          <div className="filter-chips">
+            {[
+              { key: 'all', label: 'Todas' },
+              { key: 'completed', label: 'Descargadas' },
+              { key: 'pending', label: 'Pendientes' },
+              { key: 'failed', label: 'Fallidas' },
+              { key: 'ignored', label: 'Ignoradas' },
+            ].map(f => (
+              <button
+                key={f.key}
+                className={`chip ${filter === f.key ? 'active' : ''}`}
+                onClick={() => { setFilter(f.key); setPage(1); }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="advanced-filters" style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
+          <select className="filter-select" value={artistFilter} onChange={e => { setArtistFilter(e.target.value); setPage(1); }}>
+            <option value="">👤 Todos los Artistas</option>
+            {availableArtists.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select className="filter-select" value={sourceFilter} onChange={e => { setSourceFilter(e.target.value ? Number(e.target.value) : ''); setPage(1); }}>
+            <option value="">📋 Todas las Playlists</option>
+            {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+
+          <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', marginLeft: 'auto', marginRight: '5px' }}>Por pág:</span>
+          <select className="filter-select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} style={{ padding: '8px', marginRight: '10px' }}>
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+
+          <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', marginRight: '5px' }}>Ordenar:</span>
+          <select className="filter-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            <option value="created_at">Fecha añadido</option>
+            <option value="downloaded_at">Fecha descarga</option>
+            <option value="published_at">Antigüedad (YouTube)</option>
+          </select>
+          <select className="filter-select" value={sortOrder} onChange={e => setSortOrder(e.target.value)} style={{ width: '130px' }}>
+            <option value="desc">↓ Más reciente</option>
+            <option value="asc">↑ Más antiguo</option>
+          </select>
         </div>
       </div>
 
@@ -253,6 +310,12 @@ function App() {
                 <a href={`https://youtube.com/watch?v=${t.youtube_id}`} target="_blank" rel="noreferrer">
                   {t.title}
                 </a>
+                {(t.artist || t.published_at) && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    {t.artist && <span style={{ marginRight: '8px' }}>👤 {t.artist}</span>}
+                    {t.published_at && <span>📅 {t.published_at}</span>}
+                  </div>
+                )}
               </div>
               <div className="track-source">{t.source_name || '—'}</div>
               <div>
@@ -276,6 +339,27 @@ function App() {
           ))
         )}
       </div>
+
+      {/* ─── Pagination ──────────────────────── */}
+      {totalPages > 1 && (
+        <div className="pagination" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginTop: '20px' }}>
+          <button
+            className="btn btn-secondary"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            &laquo; Anterior
+          </button>
+          <span>Página <strong style={{ color: 'var(--text-light)' }}>{page}</strong> de {totalPages} ({totalTracks} en total)</span>
+          <button
+            className="btn btn-secondary"
+            disabled={page >= totalPages}
+            onClick={() => setPage(page + 1)}
+          >
+            Siguiente &raquo;
+          </button>
+        </div>
+      )}
 
       {/* ─── Delete Modal ────────────────────── */}
       {deleteTarget && (

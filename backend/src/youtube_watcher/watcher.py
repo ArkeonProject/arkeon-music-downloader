@@ -115,10 +115,19 @@ class YouTubeWatcher:
         title = str(raw_title) if raw_title is not None else ""
         video_id = video_data.get("id")
         is_invalid = not video_id or not title.strip() or "[Deleted" in title or "[Private" in title
-        return video_id, raw_title, title, is_invalid
+        
+        artist = (
+            video_data.get("artist")
+            or video_data.get("channel")
+            or video_data.get("uploader", "Unknown Artist")
+        )
+        upload_date = video_data.get("upload_date")
+        year = upload_date[:4] if upload_date and len(upload_date) >= 4 else None
+        
+        return video_id, raw_title, title, artist, year, is_invalid
 
     def _process_video(self, video_data: Dict, source_id: int, db):
-        video_id, raw_title, title, is_invalid = self._normalize_video_entry(video_data)
+        video_id, raw_title, title, artist, published_at, is_invalid = self._normalize_video_entry(video_data)
 
         if is_invalid:
             return
@@ -154,12 +163,25 @@ class YouTubeWatcher:
             existing_track = Track(
                 youtube_id=video_id,
                 title=display_title,
+                artist=artist,
+                published_at=published_at,
                 source_id=source_id,
                 download_status="pending"
             )
             db.add(existing_track)
             db.commit()
             db.refresh(existing_track)
+        else:
+            # Update missing fields if needed
+            changed = False
+            if not existing_track.artist and artist != "Unknown Artist":
+                existing_track.artist = artist
+                changed = True
+            if not existing_track.published_at and published_at:
+                existing_track.published_at = published_at
+                changed = True
+            if changed:
+                db.commit()
 
         try:
             result = self.downloader.download_and_convert(video_data)
@@ -192,7 +214,7 @@ class YouTubeWatcher:
         try:
             current_video_ids = set()
             for video_data in current_videos:
-                video_id, _, _, is_invalid = self._normalize_video_entry(video_data)
+                video_id, _, _, _, _, is_invalid = self._normalize_video_entry(video_data)
                 # YouTube sometimes returns raw IDs with missing titles for deleted items
                 # We specifically want to parse valid playlist members 
                 if video_id and not is_invalid:

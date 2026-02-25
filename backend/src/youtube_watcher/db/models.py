@@ -26,5 +26,7 @@ class Track(Base):
     download_status = Column(String, default="pending") # pending, completed, failed
     downloaded_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    published_at = Column(String, nullable=True) # YouTube publication date/year
+    artist = Column(String, nullable=True) # YouTube channel/uploader
 
     source = relationship("Source", back_populates="tracks")
