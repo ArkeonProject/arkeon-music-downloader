@@ -78,7 +78,7 @@ class YouTubeDownloader:
             or video_data.get("channel")
             or video_data.get("uploader", "Unknown Artist")
         )
-        album = video_data.get("album", f"YouTube - {artist}")
+        album = video_data.get("album") or artist
         upload_date = video_data.get("upload_date")
         year = upload_date[:4] if upload_date and len(upload_date) >= 4 else None
         # Resolver URL de portada
@@ -128,9 +128,15 @@ class YouTubeDownloader:
             }
 
         # Paso 1: Descargar audio en Opus
-        temp_opus = self._download_opus(video_data, title)
-        if not temp_opus:
+        opus_result = self._download_opus(video_data, title)
+        if not opus_result:
             return None
+        temp_opus, full_info = opus_result
+        
+        if full_info:
+            new_upload_date = full_info.get("upload_date")
+            if new_upload_date and len(new_upload_date) >= 4:
+                year = new_upload_date[:4]
 
         # Paso 2: Convertir a FLAC
         if not self._convert_to_flac(temp_opus, output_path, title):
@@ -150,9 +156,10 @@ class YouTubeDownloader:
             "filename": filename,
             "title": title,
             "artist": artist,
+            "published_at": year,
         }
 
-    def _download_opus(self, video_data: Dict, title: str) -> Optional[Path]:
+    def _download_opus(self, video_data: Dict, title: str) -> Optional[tuple[Path, Dict]]:
         """
         Descargar audio en formato Opus.
 
@@ -168,15 +175,15 @@ class YouTubeDownloader:
         try:
             logger.info(f"Descargando '{title}' en Opus...")
 
-            # Descargar usando la URL del video
+            # Descargar usando la URL del video y capturar información completa
             url = f"https://www.youtube.com/watch?v={video_data['id']}"
-            self._ydl.download([url])
+            info = self._ydl.extract_info(url, download=True)
 
             # Buscar el archivo descargado (puede tener extensión .opus o .webm)
             for ext in ["opus", "webm"]:
                 downloaded_file = self.download_path / f"{base_filename}.{ext}"
                 if downloaded_file.exists():
-                    return downloaded_file
+                    return downloaded_file, info
 
             logger.error(f"No se encontró archivo descargado para '{title}'")
             return None
