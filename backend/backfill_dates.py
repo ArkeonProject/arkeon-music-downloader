@@ -48,7 +48,6 @@ def main():
                     or info.get("uploader", "Unknown Artist")
                 )
 
-                needs_update = False
                 # Verificamos si hay discrepancia de artista o fecha
                 if current_artist != yt_artist or current_date != year:
                     cursor.execute(
