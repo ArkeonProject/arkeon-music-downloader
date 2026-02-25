@@ -113,6 +113,7 @@ def get_tracks(
     source_id: int | None = None,
     artist: str | None = None,
     search: str | None = None,
+    year: str | None = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
     db: Session = Depends(get_db)
@@ -125,7 +126,9 @@ def get_tracks(
     if source_id:
         query = query.filter(Track.source_id == source_id)
     if artist:
-        query = query.filter(Track.artist.ilike(f"%{artist}%"))
+        query = query.filter(Track.artist == artist)
+    if year:
+        query = query.filter(Track.published_at.startswith(year))
     if search:
         query = query.filter(Track.title.ilike(f"%{search}%"))
         
@@ -183,6 +186,17 @@ def get_artists(db: Session = Depends(get_db)):
     # Filter out empty strings if any crept in
     valid_artists = [a[0] for a in artists if a[0] and a[0].strip()]
     return sorted(valid_artists)
+
+@router.get("/tracks/years", response_model=List[str])
+def get_years(db: Session = Depends(get_db)):
+    """Get unique list of years for filtering"""
+    dates = db.query(Track.published_at).filter(Track.published_at.isnot(None)).distinct().all()
+    # Extract years (YYYY from YYYY-MM-DD or YYYY)
+    years = set()
+    for d in dates:
+        if d[0] and len(d[0]) >= 4:
+            years.add(d[0][:4])
+    return sorted(list(years), reverse=True)
 
 @router.post("/tracks/download-single")
 def trigger_single_download(req: SingleDownloadRequest, db: Session = Depends(get_db)):
