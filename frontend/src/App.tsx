@@ -276,12 +276,12 @@ function App() {
           </select>
 
           <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', marginRight: '5px' }}>Ordenar:</span>
-          <select className="filter-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <select className="filter-select" value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}>
             <option value="created_at">Fecha añadido</option>
             <option value="downloaded_at">Fecha descarga</option>
             <option value="published_at">Antigüedad (YouTube)</option>
           </select>
-          <select className="filter-select" value={sortOrder} onChange={e => setSortOrder(e.target.value)} style={{ width: '130px' }}>
+          <select className="filter-select" value={sortOrder} onChange={e => { setSortOrder(e.target.value); setPage(1); }} style={{ width: '130px' }}>
             <option value="desc">↓ Más reciente</option>
             <option value="asc">↑ Más antiguo</option>
           </select>

@@ -132,9 +132,9 @@ def get_tracks(
     sort_column = valid_sort_columns.get(sort_by, Track.created_at)
     
     if sort_order.lower() == "asc":
-        query = query.order_by(sort_column.asc())
+        query = query.order_by(sort_column.is_(None), sort_column.asc(), Track.id.desc())
     else:
-        query = query.order_by(sort_column.desc())
+        query = query.order_by(sort_column.is_(None), sort_column.desc(), Track.id.desc())
         
     total = query.count()
     pages = (total + page_size - 1) // page_size if page_size > 0 else 0
