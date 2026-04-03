@@ -205,6 +205,9 @@ class YouTubeWatcher:
                 self.failed_downloads.pop(video_id, None)
                 db.commit()
                 logger.info(f"✅ Descarga completada: {existing_track.title}")
+                
+                # Add to Navidrome playlist if configured
+                self._add_to_navidrome_playlist(source_id, existing_track.youtube_id, existing_track.title)
             else:
                 self._mark_failed(existing_track, video_id, "download_failed", db)
         except Exception as e:
@@ -311,3 +314,77 @@ class YouTubeWatcher:
                     pass
         except Exception as e:
             logger.error(f"Error en auto-limpieza de .trash: {e}")
+
+    def _add_to_navidrome_playlist(self, source_id: int | None, youtube_id: str, title: str):
+        """Add a downloaded track to Navidrome playlists (global + source-specific)"""
+        try:
+            import os
+            from .navidrome_client import NavidromeClient
+            from .db.database import SessionLocal
+            
+            navidrome_url = os.getenv("NAVIDROME_URL")
+            navidrome_user = os.getenv("NAVIDROME_USER")
+            navidrome_password = os.getenv("NAVIDROME_PASSWORD")
+            global_playlist_name = os.getenv("NAVIDROME_GLOBAL_PLAYLIST_NAME")
+            
+            if not all([navidrome_url, navidrome_user, navidrome_password]):
+                return
+            
+            client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
+            
+            # Search for the song in Navidrome by title
+            songs = client.search_songs(title)
+            navidrome_song_id = None
+            
+            for song in songs:
+                if song.get("title") == title or youtube_id in song.get("comment", ""):
+                    navidrome_song_id = song.get("id")
+                    break
+            
+            if not navidrome_song_id:
+                logger.debug(f"Could not find '{title}' in Navidrome, skipping playlist addition")
+                return
+            
+            # Add to global playlist if configured
+            if global_playlist_name:
+                self._add_song_to_playlist_by_name(client, global_playlist_name, navidrome_song_id, title, "global")
+            
+            # Add to source-specific playlist if exists
+            if source_id:
+                with SessionLocal() as db:
+                    source = db.query(Source).filter(Source.id == source_id).first()
+                    if source and source.navidrome_playlist_id:
+                        self._add_song_to_playlist_by_id(client, source.navidrome_playlist_id, navidrome_song_id, title, source.name)
+                
+        except Exception as e:
+            logger.error(f"Error adding '{title}' to Navidrome playlists: {e}")
+
+    def _add_song_to_playlist_by_name(self, client, playlist_name: str, song_id: str, title: str, playlist_type: str):
+        """Find playlist by name and add song to it"""
+        playlist = client.find_playlist_by_name(playlist_name)
+        if not playlist:
+            logger.warning(f"{playlist_type.capitalize()} playlist '{playlist_name}' not found in Navidrome")
+            return
+        
+        self._add_song_to_playlist_by_id(client, playlist.get("id"), song_id, title, playlist_name)
+
+    def _add_song_to_playlist_by_id(self, client, playlist_id: str, song_id: str, title: str, playlist_label: str):
+        """Add song to playlist by ID, avoiding duplicates"""
+        try:
+            current_songs = client.get_playlist_songs(playlist_id)
+            current_song_ids = [s.get("id") for s in current_songs]
+            
+            if song_id in current_song_ids:
+                return
+            
+            all_song_ids = current_song_ids + [song_id]
+            success = client.update_playlist(playlist_id, song_ids=all_song_ids)
+            
+            if success:
+                logger.info(f"✅ Added '{title}' to Navidrome playlist '{playlist_label}'")
+            else:
+                logger.warning(f"Failed to add '{title}' to Navidrome playlist '{playlist_label}'")
+                
+        except Exception as e:
+            logger.error(f"Error adding '{title}' to Navidrome playlist '{playlist_label}': {e}")
+

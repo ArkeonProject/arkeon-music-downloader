@@ -61,13 +61,13 @@ def test_integration_full_workflow():
 
     # Crear watcher con sync habilitado
     watcher = YouTubeWatcher(
-        playlist_url=TEST_PLAYLIST_URL,
         download_path=str(download_path),
         interval_ms=30000,  # 30 segundos para testing
         enable_sync_deletions=True,
         use_trash_folder=True,
         trash_retention_days=1,
     )
+
 
     print("✅ Watcher inicializado")
     print()

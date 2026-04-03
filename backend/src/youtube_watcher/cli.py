@@ -175,24 +175,40 @@ def main():
     try:
         # Crear watcher
         watcher = YouTubeWatcher(
-            playlist_url,
-            download_path,
-            interval_ms,
+            download_path=download_path,
+            interval_ms=interval_ms,
             cookies_path=cookies_path,
             enable_sync_deletions=enable_sync_deletions,
             use_trash_folder=use_trash_folder,
             trash_retention_days=trash_retention_days,
         )
 
+        # Si se proporcionó una URL, asegurarse de que esté en la DB
+        if playlist_url:
+            from .db.database import SessionLocal
+            from .db.models import Source
+            with SessionLocal() as db:
+                existing = db.query(Source).filter(Source.url == playlist_url).first()
+                if not existing:
+                    new_source = Source(url=playlist_url, name="CLI Playlist", type="playlist", status="active")
+                    db.add(new_source)
+                    db.commit()
+                    logging.info(f"Añadida nueva fuente desde CLI: {playlist_url}")
+
         if args.latest_only:
             # Descargar solo la última canción
             print("🎵 Modo: Descarga única de la última canción")
-            result = watcher.download_latest_song()
-            if result:
-                print(f"✅ Descarga completada: {result.get('title', 'Unknown')}")
+            if hasattr(watcher, 'download_latest_song'):
+                result = watcher.download_latest_song(playlist_url)
+                if result:
+                    print(f"✅ Descarga completada: {result.get('title', 'Unknown')}")
+                else:
+                    print("❌ Error en la descarga")
+                    sys.exit(1)
             else:
-                print("❌ Error en la descarga")
+                print("❌ Error: El modo --latest-only no está implementado en la versión actual del Watcher")
                 sys.exit(1)
+
         else:
             # Modo normal de monitoreo continuo
             print("🔄 Modo: Monitoreo continuo de la playlist")
