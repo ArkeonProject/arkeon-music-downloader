@@ -7,7 +7,6 @@ import hashlib
 import logging
 import requests
 from typing import Optional
-from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
@@ -101,13 +100,6 @@ class NavidromeClient:
             params["songId"] = song_ids
 
         result = self._make_request("updatePlaylist", params)
-        return result is not None
-
-    def delete_playlist(self, playlist_id: str) -> bool:
-        """Delete a playlist from Navidrome (songs remain in library)"""
-        result = self._make_request("deletePlaylist", {"id": playlist_id})
-        if result:
-            logger.info(f"Deleted Navidrome playlist ID: {playlist_id}")
         return result is not None
 
     def delete_playlist(self, playlist_id: str) -> bool:
