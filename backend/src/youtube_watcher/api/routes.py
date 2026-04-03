@@ -4,12 +4,15 @@ from sqlalchemy import func
 from typing import List
 from pydantic import BaseModel
 from datetime import datetime
+import logging
 import os
 from pathlib import Path
 
 from ..db.database import get_db
 from ..db.models import Source, Track
 from .deps import get_watcher
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -26,6 +29,7 @@ class SourceResponse(BaseModel):
     name: str
     type: str
     status: str
+    navidrome_playlist_id: str | None = None
     created_at: datetime
 
     class Config:
@@ -73,21 +77,157 @@ def create_source(source: SourceCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Source URL already registered")
     
     new_source = Source(**source.model_dump())
+    
+    # Create Navidrome playlist if configured and source is a playlist/artist
+    if source.type in ("playlist", "artist"):
+        navidrome_id = _create_navidrome_playlist(source.name)
+        if navidrome_id:
+            new_source.navidrome_playlist_id = navidrome_id
+    
     db.add(new_source)
     db.commit()
     db.refresh(new_source)
+    
+    # Sync existing tracks to Navidrome playlist after source is created
+    if new_source.navidrome_playlist_id:
+        _sync_existing_tracks_to_navidrome(new_source.id, new_source.navidrome_playlist_id, source.name)
+    
     return new_source
+
+
+def _create_navidrome_playlist(name: str) -> str | None:
+    """Create a playlist in Navidrome"""
+    from ..navidrome_client import NavidromeClient
+    
+    navidrome_url = os.getenv("NAVIDROME_URL")
+    navidrome_user = os.getenv("NAVIDROME_USER")
+    navidrome_password = os.getenv("NAVIDROME_PASSWORD")
+    
+    if not all([navidrome_url, navidrome_user, navidrome_password]):
+        return None
+    
+    try:
+        client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
+        
+        if not client.ping():
+            logger.warning("Could not connect to Navidrome, skipping playlist creation")
+            return None
+        
+        existing_playlist = client.find_playlist_by_name(name)
+        if existing_playlist:
+            logger.info(f"Navidrome playlist '{name}' already exists")
+            return existing_playlist.get("id")
+        
+        playlist_id = client.create_playlist(name)
+        if playlist_id:
+            logger.info(f"Created Navidrome playlist '{name}' with ID: {playlist_id}")
+        
+        return playlist_id
+    except Exception as e:
+        logger.error(f"Error creating Navidrome playlist: {e}")
+        return None
+
+
+def _sync_existing_tracks_to_navidrome(source_id: int, playlist_id: str, source_name: str):
+    """Sync existing tracks from a source to its Navidrome playlist"""
+    from ..navidrome_client import NavidromeClient
+    
+    navidrome_url = os.getenv("NAVIDROME_URL")
+    navidrome_user = os.getenv("NAVIDROME_USER")
+    navidrome_password = os.getenv("NAVIDROME_PASSWORD")
+    
+    if not all([navidrome_url, navidrome_user, navidrome_password]):
+        return
+    
+    try:
+        client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
+        
+        # Get existing completed tracks for this source
+        from ..db.database import SessionLocal
+        from ..db.models import Track
+        
+        with SessionLocal() as db:
+            existing_tracks = db.query(Track).filter(
+                Track.source_id == source_id,
+                Track.download_status == "completed"
+            ).all()
+        
+        if not existing_tracks:
+            logger.info(f"No existing tracks to sync for source '{source_name}'")
+            return
+        
+        # Get current playlist songs
+        current_songs = client.get_playlist_songs(playlist_id)
+        current_song_ids = {s.get("id") for s in current_songs}
+        
+        added_count = 0
+        for track in existing_tracks:
+            # Search for song in Navidrome
+            songs = client.search_songs(track.title)
+            navidrome_song_id = None
+            
+            for song in songs:
+                if song.get("title") == track.title or track.youtube_id in song.get("comment", ""):
+                    navidrome_song_id = song.get("id")
+                    break
+            
+            if navidrome_song_id and navidrome_song_id not in current_song_ids:
+                current_song_ids.add(navidrome_song_id)
+                added_count += 1
+        
+        if added_count > 0:
+            all_song_ids = list(current_song_ids)
+            success = client.update_playlist(playlist_id, song_ids=all_song_ids)
+            if success:
+                logger.info(f"✅ Synced {added_count} existing tracks to Navidrome playlist '{source_name}'")
+            else:
+                logger.warning(f"Failed to sync tracks to Navidrome playlist '{source_name}'")
+        else:
+            logger.info(f"No new tracks to sync for source '{source_name}'")
+            
+    except Exception as e:
+        logger.error(f"Error syncing existing tracks to Navidrome: {e}")
 
 @router.delete("/sources/{source_id}")
 def delete_source(source_id: int, db: Session = Depends(get_db)):
-    """Remove a source"""
+    """Remove a source and its Navidrome playlist (songs are kept in library)"""
     source = db.query(Source).filter(Source.id == source_id).first()
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     
+    # Delete Navidrome playlist before removing source from DB
+    if source.navidrome_playlist_id:
+        _delete_navidrome_playlist(source.navidrome_playlist_id, source.name)
+    
     db.delete(source)
     db.commit()
     return {"status": "success", "message": f"Source {source_id} deleted"}
+
+
+def _delete_navidrome_playlist(playlist_id: str, source_name: str):
+    """Delete a playlist from Navidrome (songs remain in library)"""
+    navidrome_url = os.getenv("NAVIDROME_URL")
+    navidrome_user = os.getenv("NAVIDROME_USER")
+    navidrome_password = os.getenv("NAVIDROME_PASSWORD")
+    
+    if not all([navidrome_url, navidrome_user, navidrome_password]):
+        return
+    
+    try:
+        from ..navidrome_client import NavidromeClient
+        client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
+        
+        if not client.ping():
+            logger.warning("Could not connect to Navidrome, skipping playlist deletion")
+            return
+        
+        success = client.delete_playlist(playlist_id)
+        if success:
+            logger.info(f"🗑️ Deleted Navidrome playlist '{source_name}' (ID: {playlist_id})")
+        else:
+            logger.warning(f"Failed to delete Navidrome playlist '{source_name}'")
+    except Exception as e:
+        logger.error(f"Error deleting Navidrome playlist '{source_name}': {e}")
 
 @router.put("/sources/{source_id}/status")
 def update_source_status(source_id: int, status: str, db: Session = Depends(get_db)):

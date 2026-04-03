@@ -12,6 +12,11 @@ services:
       - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-7}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - COOKIES_FILE=/data/cookies.txt
+      - NAVIDROME_URL=${NAVIDROME_URL:-}
+      - NAVIDROME_USER=${NAVIDROME_USER:-}
+      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD:-}
+      - NAVIDROME_GLOBAL_PLAYLIST_NAME=${NAVIDROME_GLOBAL_PLAYLIST_NAME:-Toda la Música}
+      - NAVIDROME_GLOBAL_PLAYLIST_NAME=${NAVIDROME_GLOBAL_PLAYLIST_NAME:-Toda la Música}
     volumes:
       - ${HOST_DOWNLOAD_PATH:-./downloads}:/downloads
       - music-data:/data
