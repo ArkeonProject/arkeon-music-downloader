@@ -11,6 +11,7 @@ class Source(Base):
     name = Column(String, nullable=False)
     type = Column(String, default="playlist") # playlist, artist, channel, track
     status = Column(String, default="active") # active, paused
+    navidrome_playlist_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     tracks = relationship("Track", back_populates="source", cascade="all, delete")

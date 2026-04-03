@@ -1,8 +1,31 @@
 import logging
 import os
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from youtube_watcher import cli
+
+
+class FakeDB:
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        pass
+    def query(self, model):
+        return self
+    def filter(self, *a):
+        return self
+    def first(self):
+        return None
+    def add(self, obj):
+        pass
+    def commit(self):
+        pass
+
+
+def _patch_session_local(monkeypatch):
+    fake_session = MagicMock(return_value=FakeDB())
+    monkeypatch.setattr("youtube_watcher.db.database.SessionLocal", fake_session)
 
 
 def test_get_environment_config(monkeypatch, tmp_path):
@@ -72,7 +95,7 @@ def test_main_latest_only(monkeypatch, tmp_path):
             self.download_latest_song_called = False
             self.start_called = False
 
-        def download_latest_song(self):
+        def download_latest_song(self, url=None):
             self.download_latest_song_called = True
             return {"title": "Song", "success": True}
 
@@ -86,6 +109,7 @@ def test_main_latest_only(monkeypatch, tmp_path):
         return created["instance"]
 
     monkeypatch.setattr(cli, "YouTubeWatcher", fake_watcher)
+    _patch_session_local(monkeypatch)
 
     cli.main()
 
@@ -121,6 +145,7 @@ def test_main_monitor_mode(monkeypatch, tmp_path):
         return created["instance"]
 
     monkeypatch.setattr(cli, "YouTubeWatcher", fake_watcher)
+    _patch_session_local(monkeypatch)
 
     cli.main()
 
