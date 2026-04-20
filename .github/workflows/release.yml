@@ -29,7 +29,7 @@ jobs:
   publish-release:
     name: Publish Release
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    uses: ArkeonProject/organization-tools/.github/workflows/release-publish.yml@v1.1.5
+    uses: ArkeonProject/organization-tools/.github/workflows/release-publish.yml@v1.1.6
     with:
       project-type: 'python'
       create-github-release: true
