@@ -5,7 +5,7 @@ on:
 
 jobs:
   deploy-backend:
-    uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.1.5
+    uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.1.6
     with:
       image_name: ${{ github.repository }}/backend
       mode: 'production'
@@ -15,7 +15,7 @@ jobs:
       PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_BACKEND }}
 
   deploy-frontend:
-    uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.1.5
+    uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.1.6
     with:
       image_name: ${{ github.repository }}/frontend
       mode: 'production'
