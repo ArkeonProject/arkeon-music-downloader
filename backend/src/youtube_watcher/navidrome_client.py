@@ -120,16 +120,29 @@ class NavidromeClient:
             return playlist_id
         return None
 
-    def update_playlist(self, playlist_id: str, name: Optional[str] = None, 
-                       song_ids: Optional[list[str]] = None) -> bool:
+    def update_playlist(
+        self,
+        playlist_id: str,
+        name: Optional[str] = None,
+        song_ids_to_add: Optional[list[str]] = None,
+        song_indexes_to_remove: Optional[list[int]] = None,
+    ) -> bool:
         """Update a playlist (add/remove songs, rename)"""
         params = {"playlistId": playlist_id}
         if name:
             params["name"] = name
-        if song_ids is not None:
-            params["songId"] = song_ids
+        if song_ids_to_add:
+            params["songIdToAdd"] = song_ids_to_add
+        if song_indexes_to_remove:
+            params["songIndexToRemove"] = song_indexes_to_remove
 
         result = self._make_request("updatePlaylist", params)
+        return result is not None
+
+    def start_scan(self, full_scan: bool = False) -> bool:
+        """Trigger a Navidrome library scan"""
+        params = {"fullScan": "true"} if full_scan else None
+        result = self._make_request("startScan", params)
         return result is not None
 
     def delete_playlist(self, playlist_id: str) -> bool:
