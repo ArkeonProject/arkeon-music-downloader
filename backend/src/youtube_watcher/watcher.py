@@ -374,10 +374,23 @@ class YouTubeWatcher:
                 with SessionLocal() as db:
                     source = db.query(Source).filter(Source.id == source_id).first()
                     if source and source.type in ("playlist", "artist"):
-                        playlist_id = source.navidrome_playlist_id or client.ensure_playlist(source.name)
-                        if playlist_id and not source.navidrome_playlist_id:
-                            source.navidrome_playlist_id = playlist_id
+                        playlist_id = source.navidrome_playlist_id
+                        if playlist_id and not client.playlist_exists(playlist_id):
+                            logger.warning(
+                                "Stored Navidrome playlist ID '%s' for source '%s' is stale. Re-linking by name.",
+                                playlist_id,
+                                source.name,
+                            )
+                            source.navidrome_playlist_id = None
                             db.commit()
+                            playlist_id = None
+
+                        if not playlist_id:
+                            playlist_id = client.ensure_playlist(source.name)
+                            if playlist_id:
+                                source.navidrome_playlist_id = playlist_id
+                                db.commit()
+
                         if playlist_id:
                             self._add_song_to_playlist_by_id(client, playlist_id, navidrome_song_id, title, source.name)
 

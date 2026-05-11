@@ -159,6 +159,11 @@ class NavidromeClient:
             return result["playlist"].get("entry", [])
         return []
 
+    def playlist_exists(self, playlist_id: str) -> bool:
+        """Check if a playlist exists by ID"""
+        result = self._make_request("getPlaylist", {"id": playlist_id})
+        return bool(result and "playlist" in result)
+
     def search_songs(self, query: str) -> list[dict]:
         """Search for songs in Navidrome"""
         result = self._make_request("search3", {"query": query})
