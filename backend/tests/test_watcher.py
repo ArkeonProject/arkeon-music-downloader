@@ -43,6 +43,7 @@ class TestYouTubeWatcher:
     def test_process_video_success_new_track(self, tmp_path):
         watcher = YouTubeWatcher(str(tmp_path))
         video_data = {"id": "abc123", "title": "Song", "channel": "Artist"}
+        watcher._add_to_navidrome_playlist = Mock()
 
         db_mock = MagicMock()
         # Mock para que retorne None al buscar el track (simulando que es nuevo)
@@ -62,14 +63,21 @@ class TestYouTubeWatcher:
         assert db_mock.add.called
         assert db_mock.commit.called
         assert watcher.downloader.download_and_convert.called
+        watcher._add_to_navidrome_playlist.assert_called_once_with(
+            1,
+            "abc123",
+            "Song",
+            is_new_download=True,
+        )
 
     def test_process_video_skips_completed_track(self, tmp_path):
         watcher = YouTubeWatcher(str(tmp_path))
         video_data = {"id": "abc123", "title": "Song"}
+        watcher._add_to_navidrome_playlist = Mock()
 
         db_mock = MagicMock()
         # Mock para que devuelva un track completado
-        existing_track = Track(youtube_id="abc123", download_status="completed")
+        existing_track = Track(youtube_id="abc123", title="Song", download_status="completed")
         db_mock.query.return_value.filter.return_value.first.return_value = existing_track
         watcher.downloader.download_and_convert = Mock()
         
@@ -77,6 +85,12 @@ class TestYouTubeWatcher:
 
         # No se debe intentar descargar si ya está "completed"
         watcher.downloader.download_and_convert.assert_not_called()
+        watcher._add_to_navidrome_playlist.assert_called_once_with(
+            1,
+            "abc123",
+            "Song",
+            is_new_download=False,
+        )
 
     @patch("youtube_watcher.watcher.PlaylistMonitor")
     @patch("youtube_watcher.watcher.SessionLocal")
