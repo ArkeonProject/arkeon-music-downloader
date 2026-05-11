@@ -117,6 +117,56 @@ class TestYouTubeWatcher:
         # Verificar que se procesó el video con sus respectivos DB arguments
         watcher._process_video.assert_called_once_with({"id": "vid1", "title": "Song"}, 1, db_mock)
 
+    def test_add_song_to_playlist_by_id_uses_song_id_to_add(self, tmp_path):
+        watcher = YouTubeWatcher(str(tmp_path))
+        client = Mock()
+        client.get_playlist_songs.return_value = [{"id": "existing-song"}]
+        client.update_playlist.return_value = True
+
+        watcher._add_song_to_playlist_by_id(
+            client,
+            "playlist-1",
+            "new-song",
+            "Song",
+            "Test Playlist",
+        )
+
+        client.update_playlist.assert_called_once_with("playlist-1", song_ids_to_add=["new-song"])
+
+    @patch("youtube_watcher.watcher.time.sleep", return_value=None)
+    def test_add_to_navidrome_playlist_triggers_scan_and_retries(self, _mock_sleep, tmp_path):
+        watcher = YouTubeWatcher(str(tmp_path))
+        watcher._add_song_to_playlist_by_id = Mock()
+        watcher._find_navidrome_song_id = Mock(side_effect=[None, "song-nav"])
+
+        source = Source(id=1, name="Playlist A", type="playlist", navidrome_playlist_id="pl-source")
+
+        db_mock = MagicMock()
+        db_mock.query.return_value.filter.return_value.first.return_value = source
+
+        client_instance = Mock()
+        client_instance.search_songs.side_effect = [[], [], [{"id": "song-nav", "title": "Song", "comment": ""}]]
+        client_instance.start_scan.return_value = True
+        client_instance.ensure_playlist.side_effect = ["pl-global", "pl-new"]
+
+        with patch("youtube_watcher.navidrome_client.NavidromeClient", return_value=client_instance), \
+             patch("youtube_watcher.db.database.SessionLocal") as mock_session, \
+             patch("os.getenv") as mock_getenv:
+            mock_session.return_value.__enter__.return_value = db_mock
+            env = {
+                "NAVIDROME_URL": "https://music.example.com",
+                "NAVIDROME_USER": "user",
+                "NAVIDROME_PASSWORD": "pass",
+                "NAVIDROME_GLOBAL_PLAYLIST_NAME": "Toda la Musica",
+                "NAVIDROME_NEW_PLAYLIST_NAME": "Lo más nuevo",
+            }
+            mock_getenv.side_effect = lambda key, default=None: env.get(key, default)
+
+            watcher._add_to_navidrome_playlist(1, "yt123", "Song", is_new_download=True)
+
+        client_instance.start_scan.assert_called_once_with()
+        assert watcher._add_song_to_playlist_by_id.call_count == 3
+
 
 class TestPlaylistMonitor:
     """Tests para PlaylistMonitor"""

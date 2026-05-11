@@ -5,6 +5,7 @@ YouTube Playlist Watcher - Clase principal para monitoreo continuo usando SQLite
 import logging
 import time
 import shutil
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict
@@ -344,19 +345,22 @@ class YouTubeWatcher:
             
             client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
 
-            # Search by youtube_id first, then fallback to title
-            songs = client.search_songs(youtube_id)
-            if not songs:
-                songs = client.search_songs(title)
-            navidrome_song_id = None
-            
-            for song in songs:
-                if song.get("title") == title or youtube_id in song.get("comment", ""):
-                    navidrome_song_id = song.get("id")
-                    break
-            
+            navidrome_song_id = self._find_navidrome_song_id(client, youtube_id, title)
+
             if not navidrome_song_id:
-                logger.debug(f"Could not find '{title}' in Navidrome, skipping playlist addition")
+                client.start_scan()
+                for _ in range(5):
+                    time.sleep(3)
+                    navidrome_song_id = self._find_navidrome_song_id(client, youtube_id, title)
+                    if navidrome_song_id:
+                        break
+
+            if not navidrome_song_id:
+                logger.warning(
+                    "Could not find '%s' (youtube_id=%s) in Navidrome after scan/retries, skipping playlist addition",
+                    title,
+                    youtube_id,
+                )
                 return
 
             # Add to global playlist if configured
@@ -394,9 +398,8 @@ class YouTubeWatcher:
             
             if song_id in current_song_ids:
                 return
-            
-            all_song_ids = current_song_ids + [song_id]
-            success = client.update_playlist(playlist_id, song_ids=all_song_ids)
+
+            success = client.update_playlist(playlist_id, song_ids_to_add=[song_id])
             
             if success:
                 logger.info(f"✅ Added '{title}' to Navidrome playlist '{playlist_label}'")
@@ -405,3 +408,24 @@ class YouTubeWatcher:
                 
         except Exception as e:
             logger.error(f"Error adding '{title}' to Navidrome playlist '{playlist_label}': {e}")
+
+    @staticmethod
+    def _normalize_string(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value or "")
+        return "".join(ch for ch in normalized if not unicodedata.combining(ch)).strip().casefold()
+
+    def _find_navidrome_song_id(self, client, youtube_id: str, title: str) -> str | None:
+        songs = client.search_songs(youtube_id)
+        if not songs:
+            songs = client.search_songs(title)
+
+        normalized_title = self._normalize_string(title)
+        for song in songs:
+            comment = str(song.get("comment", ""))
+            song_title = str(song.get("title", ""))
+            if youtube_id and youtube_id in comment:
+                return song.get("id")
+            if self._normalize_string(song_title) == normalized_title:
+                return song.get("id")
+
+        return None
