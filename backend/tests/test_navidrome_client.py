@@ -33,6 +33,18 @@ class TestNavidromeClient:
         called_params = mock_get.call_args.kwargs["params"]
         assert ("fullScan", "true") in called_params
 
+    def test_playlist_exists_returns_false_when_not_found(self):
+        client = NavidromeClient("https://example.com", "user", "pass")
+        client._make_request = Mock(return_value=None)
+
+        assert client.playlist_exists("missing-id") is False
+
+    def test_playlist_exists_returns_true_when_found(self):
+        client = NavidromeClient("https://example.com", "user", "pass")
+        client._make_request = Mock(return_value={"playlist": {"id": "abc"}})
+
+        assert client.playlist_exists("abc") is True
+
     def test_ensure_playlist_reuses_existing_playlist(self):
         client = NavidromeClient("https://example.com", "user", "pass")
         client.find_playlist_by_name = Mock(return_value={"id": "existing-1", "name": "Lo más nuevo"})

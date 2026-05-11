@@ -167,6 +167,39 @@ class TestYouTubeWatcher:
         client_instance.start_scan.assert_called_once_with()
         assert watcher._add_song_to_playlist_by_id.call_count == 3
 
+    @patch("youtube_watcher.watcher.time.sleep", return_value=None)
+    def test_add_to_navidrome_playlist_relinks_stale_source_playlist_id(self, _mock_sleep, tmp_path):
+        watcher = YouTubeWatcher(str(tmp_path))
+        watcher._add_song_to_playlist_by_id = Mock()
+        watcher._find_navidrome_song_id = Mock(return_value="song-nav")
+
+        source = Source(id=1, name="Lpz List", type="playlist", navidrome_playlist_id="stale-id")
+
+        db_mock = MagicMock()
+        db_mock.query.return_value.filter.return_value.first.return_value = source
+
+        client_instance = Mock()
+        client_instance.playlist_exists.return_value = False
+        client_instance.ensure_playlist.side_effect = ["pl-global", "pl-source-relinked", "pl-new"]
+
+        with patch("youtube_watcher.navidrome_client.NavidromeClient", return_value=client_instance), \
+             patch("youtube_watcher.db.database.SessionLocal") as mock_session, \
+             patch("os.getenv") as mock_getenv:
+            mock_session.return_value.__enter__.return_value = db_mock
+            env = {
+                "NAVIDROME_URL": "https://music.example.com",
+                "NAVIDROME_USER": "user",
+                "NAVIDROME_PASSWORD": "pass",
+                "NAVIDROME_GLOBAL_PLAYLIST_NAME": "Toda la Musica",
+                "NAVIDROME_NEW_PLAYLIST_NAME": "Lo más nuevo",
+            }
+            mock_getenv.side_effect = lambda key, default=None: env.get(key, default)
+
+            watcher._add_to_navidrome_playlist(1, "yt123", "Song", is_new_download=True)
+
+        assert source.navidrome_playlist_id == "pl-source-relinked"
+        assert db_mock.commit.call_count >= 1
+
 
 class TestPlaylistMonitor:
     """Tests para PlaylistMonitor"""
