@@ -7,6 +7,7 @@ import hashlib
 import logging
 import requests
 from typing import Optional
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 
@@ -19,24 +20,43 @@ class NavidromeClient:
         self.username = username
         self.password = password
 
-    def _build_auth_params(self) -> str:
+    def _build_auth_params(self) -> dict[str, str]:
         """Build Subsonic authentication parameters"""
         import random
         import string
         salt = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
         token = hashlib.md5(f"{self.password}{salt}".encode()).hexdigest()
-        return f"u={self.username}&t={token}&s={salt}&v=1.16.1&c=arkeon-music-downloader&f=json"
+        return {
+            "u": self.username,
+            "t": token,
+            "s": salt,
+            "v": "1.16.1",
+            "c": "arkeon-music-downloader",
+            "f": "json",
+        }
+
+    def _normalize_params(self, params: Optional[dict]) -> list[tuple[str, str]]:
+        normalized = list(self._build_auth_params().items())
+        if not params:
+            return normalized
+
+        for key, value in params.items():
+            if isinstance(value, list):
+                for item in value:
+                    normalized.append((key, str(item)))
+            elif value is not None:
+                normalized.append((key, str(value)))
+
+        return normalized
 
     def _make_request(self, endpoint: str, params: Optional[dict] = None, method: str = "GET") -> Optional[dict]:
         """Make a request to the Subsonic API"""
-        url = f"{self.base_url}/rest/{endpoint}"
-        auth_params = self._build_auth_params()
-        
-        if params:
-            auth_params += "&" + "&".join(f"{k}={v}" for k, v in params.items())
+        endpoint_path = f"rest/{endpoint}"
+        url = urljoin(f"{self.base_url}/", endpoint_path)
+        request_params = self._normalize_params(params)
 
         try:
-            response = requests.get(f"{url}?{auth_params}", timeout=10)
+            response = requests.get(url, params=request_params, timeout=10)
             response.raise_for_status()
             data = response.json()
             
@@ -69,10 +89,20 @@ class NavidromeClient:
     def find_playlist_by_name(self, name: str) -> Optional[dict]:
         """Find a playlist by name"""
         playlists = self.get_playlists()
+        normalized_name = name.strip().casefold()
         for playlist in playlists:
-            if playlist.get("name") == name:
+            playlist_name = str(playlist.get("name", "")).strip().casefold()
+            if playlist_name == normalized_name:
                 return playlist
         return None
+
+    def ensure_playlist(self, name: str) -> Optional[str]:
+        """Find playlist by name or create it if missing"""
+        existing_playlist = self.find_playlist_by_name(name)
+        if existing_playlist:
+            return existing_playlist.get("id")
+
+        return self.create_playlist(name)
 
     def create_playlist(self, name: str, song_ids: Optional[list[str]] = None) -> Optional[str]:
         """

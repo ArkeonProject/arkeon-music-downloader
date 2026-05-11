@@ -63,14 +63,9 @@ def _sync_existing_sources_to_navidrome():
             ).all()
         
         for source in sources:
-            existing_playlist = client.find_playlist_by_name(source.name)
-            if existing_playlist:
-                playlist_id = existing_playlist.get("id")
-                logger.info(f"Found existing Navidrome playlist '{source.name}' with ID: {playlist_id}")
-            else:
-                playlist_id = client.create_playlist(source.name)
-                if playlist_id:
-                    logger.info(f"Created new Navidrome playlist '{source.name}' with ID: {playlist_id}")
+            playlist_id = client.ensure_playlist(source.name)
+            if playlist_id:
+                logger.info(f"Ensured Navidrome playlist '{source.name}' with ID: {playlist_id}")
             
             if playlist_id:
                 with SessionLocal() as db:

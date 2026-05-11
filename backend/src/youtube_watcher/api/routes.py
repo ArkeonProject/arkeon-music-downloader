@@ -113,14 +113,9 @@ def _create_navidrome_playlist(name: str) -> str | None:
             logger.warning("Could not connect to Navidrome, skipping playlist creation")
             return None
         
-        existing_playlist = client.find_playlist_by_name(name)
-        if existing_playlist:
-            logger.info(f"Navidrome playlist '{name}' already exists")
-            return existing_playlist.get("id")
-        
-        playlist_id = client.create_playlist(name)
+        playlist_id = client.ensure_playlist(name)
         if playlist_id:
-            logger.info(f"Created Navidrome playlist '{name}' with ID: {playlist_id}")
+            logger.info(f"Ensured Navidrome playlist '{name}' with ID: {playlist_id}")
         
         return playlist_id
     except Exception as e:

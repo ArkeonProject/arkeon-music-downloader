@@ -143,6 +143,12 @@ class YouTubeWatcher:
         
         if existing_track:
             if existing_track.download_status == "completed":
+                self._add_to_navidrome_playlist(
+                    source_id,
+                    existing_track.youtube_id,
+                    existing_track.title,
+                    is_new_download=False,
+                )
                 return
             if existing_track.download_status == "ignored":
                 return
@@ -207,7 +213,12 @@ class YouTubeWatcher:
                 logger.info(f"✅ Descarga completada: {existing_track.title}")
                 
                 # Add to Navidrome playlist if configured
-                self._add_to_navidrome_playlist(source_id, existing_track.youtube_id, existing_track.title)
+                self._add_to_navidrome_playlist(
+                    source_id,
+                    existing_track.youtube_id,
+                    existing_track.title,
+                    is_new_download=True,
+                )
             else:
                 self._mark_failed(existing_track, video_id, "download_failed", db)
         except Exception as e:
@@ -315,8 +326,8 @@ class YouTubeWatcher:
         except Exception as e:
             logger.error(f"Error en auto-limpieza de .trash: {e}")
 
-    def _add_to_navidrome_playlist(self, source_id: int | None, youtube_id: str, title: str):
-        """Add a downloaded track to Navidrome playlists (global + source-specific)"""
+    def _add_to_navidrome_playlist(self, source_id: int | None, youtube_id: str, title: str, *, is_new_download: bool):
+        """Add a track to Navidrome playlists following business rules"""
         try:
             import os
             from .navidrome_client import NavidromeClient
@@ -326,14 +337,17 @@ class YouTubeWatcher:
             navidrome_user = os.getenv("NAVIDROME_USER")
             navidrome_password = os.getenv("NAVIDROME_PASSWORD")
             global_playlist_name = os.getenv("NAVIDROME_GLOBAL_PLAYLIST_NAME")
+            new_playlist_name = os.getenv("NAVIDROME_NEW_PLAYLIST_NAME", "Lo más nuevo")
             
             if not all([navidrome_url, navidrome_user, navidrome_password]):
                 return
             
             client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
-            
-            # Search for the song in Navidrome by title
-            songs = client.search_songs(title)
+
+            # Search by youtube_id first, then fallback to title
+            songs = client.search_songs(youtube_id)
+            if not songs:
+                songs = client.search_songs(title)
             navidrome_song_id = None
             
             for song in songs:
@@ -344,29 +358,33 @@ class YouTubeWatcher:
             if not navidrome_song_id:
                 logger.debug(f"Could not find '{title}' in Navidrome, skipping playlist addition")
                 return
-            
+
             # Add to global playlist if configured
             if global_playlist_name:
-                self._add_song_to_playlist_by_name(client, global_playlist_name, navidrome_song_id, title, "global")
-            
+                global_playlist_id = client.ensure_playlist(global_playlist_name)
+                if global_playlist_id:
+                    self._add_song_to_playlist_by_id(client, global_playlist_id, navidrome_song_id, title, global_playlist_name)
+
             # Add to source-specific playlist if exists
             if source_id:
                 with SessionLocal() as db:
                     source = db.query(Source).filter(Source.id == source_id).first()
-                    if source and source.navidrome_playlist_id:
-                        self._add_song_to_playlist_by_id(client, source.navidrome_playlist_id, navidrome_song_id, title, source.name)
-                
+                    if source and source.type in ("playlist", "artist"):
+                        playlist_id = source.navidrome_playlist_id or client.ensure_playlist(source.name)
+                        if playlist_id and not source.navidrome_playlist_id:
+                            source.navidrome_playlist_id = playlist_id
+                            db.commit()
+                        if playlist_id:
+                            self._add_song_to_playlist_by_id(client, playlist_id, navidrome_song_id, title, source.name)
+
+            # Add only newly downloaded tracks to "Lo más nuevo"
+            if is_new_download and new_playlist_name:
+                new_playlist_id = client.ensure_playlist(new_playlist_name)
+                if new_playlist_id:
+                    self._add_song_to_playlist_by_id(client, new_playlist_id, navidrome_song_id, title, new_playlist_name)
+
         except Exception as e:
             logger.error(f"Error adding '{title}' to Navidrome playlists: {e}")
-
-    def _add_song_to_playlist_by_name(self, client, playlist_name: str, song_id: str, title: str, playlist_type: str):
-        """Find playlist by name and add song to it"""
-        playlist = client.find_playlist_by_name(playlist_name)
-        if not playlist:
-            logger.warning(f"{playlist_type.capitalize()} playlist '{playlist_name}' not found in Navidrome")
-            return
-        
-        self._add_song_to_playlist_by_id(client, playlist.get("id"), song_id, title, playlist_name)
 
     def _add_song_to_playlist_by_id(self, client, playlist_id: str, song_id: str, title: str, playlist_label: str):
         """Add song to playlist by ID, avoiding duplicates"""
@@ -387,4 +405,3 @@ class YouTubeWatcher:
                 
         except Exception as e:
             logger.error(f"Error adding '{title}' to Navidrome playlist '{playlist_label}': {e}")
-
