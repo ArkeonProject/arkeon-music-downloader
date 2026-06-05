@@ -156,6 +156,7 @@ def _sync_existing_tracks_to_navidrome(source_id: int, playlist_id: str, source_
         current_song_ids = {s.get("id") for s in current_songs}
         
         added_count = 0
+        song_ids_to_add = []
         for track in existing_tracks:
             # Search for song in Navidrome
             songs = client.search_songs(track.title)
@@ -168,11 +169,11 @@ def _sync_existing_tracks_to_navidrome(source_id: int, playlist_id: str, source_
             
             if navidrome_song_id and navidrome_song_id not in current_song_ids:
                 current_song_ids.add(navidrome_song_id)
+                song_ids_to_add.append(navidrome_song_id)
                 added_count += 1
         
-        if added_count > 0:
-            all_song_ids = list(current_song_ids)
-            success = client.update_playlist(playlist_id, song_ids=all_song_ids)
+        if song_ids_to_add:
+            success = client.update_playlist(playlist_id, song_ids_to_add=song_ids_to_add)
             if success:
                 logger.info(f"✅ Synced {added_count} existing tracks to Navidrome playlist '{source_name}'")
             else:
