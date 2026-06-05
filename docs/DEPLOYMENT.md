@@ -67,11 +67,41 @@ El backend requiere persistencia de datos crucial.
 
 ## Actualizaciones y CI/CD
 
-El pipeline CI/CD de GitHub empuja dos imágenes concurrentes cuando se completan merges hacia `main`:
-- `ghcr.io/arkeonproject/arkeon-music-downloader/backend`
-- `ghcr.io/arkeonproject/arkeon-music-downloader/frontend`
+El workflow `.github/workflows/cd.yml` se ejecuta en cada push a `main` y delega en
+`ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml` para
+construir y publicar dos imágenes en GHCR:
 
-Para actualizar tu servidor (sin dependencias de watchtower):
+- `ghcr.io/arkeonproject/arkeon-music-downloader/backend:<sha-corto>`
+- `ghcr.io/arkeonproject/arkeon-music-downloader/frontend:<sha-corto>`
+
+El mismo workflow puede llamar a los webhooks configurados en los secretos
+`PORTAINER_WEBHOOK_BACKEND` y `PORTAINER_WEBHOOK_FRONTEND`, pero hay una limitación
+importante: **un webhook de Portainer solo repuebla/recrea el stack con el compose
+que Portainer ya tiene guardado**. Si ese compose usa tags estáticos por commit
+como `backend:e598b5d` y `frontend:e598b5d`, el webhook no cambia el
+`StackFileContent` a `backend:<nuevo-sha>` / `frontend:<nuevo-sha>` por sí solo.
+
+Por tanto, el despliegue automático requiere una de estas estrategias:
+
+1. **Tags móviles**: el compose de Portainer referencia un tag estable, por ejemplo
+   `main` o `latest`, y el CD publica ese tag además del SHA. El webhook hace
+   `pull`/redeploy del mismo tag.
+2. **Actualización explícita del stack**: el CD o un operador actualiza el
+   `StackFileContent` de Portainer para sustituir ambos tags por el nuevo SHA y
+   redeployar el stack.
+
+Mientras el stack de producción esté fijado a tags SHA, después de cada merge a
+`main` hay que verificar que Portainer quedó apuntando al SHA nuevo. Una comprobación
+rápida es revisar el stack file o los contenedores en ejecución:
+
+```bash
+# Ejemplo con Docker directo en el host
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' \
+  | grep music-downloader
+```
+
+Para actualizar un servidor Docker Compose sin Portainer ni watchtower:
+
 ```bash
 docker compose pull
 docker compose up -d
