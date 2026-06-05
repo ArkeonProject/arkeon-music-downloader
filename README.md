@@ -145,7 +145,7 @@ El frontend en desarrollo correrá en el puerto `5173` y estará configurado par
 El proyecto utiliza GitHub Actions integradas con `ArkeonProject/organization-tools`.
 
 - **CI (`ci.yml`)**: Verifica linting, tipos de TypeScript, y ejecuta tests de Python para cualquier PR hacia `develop` o `main`.
-- **CD (`cd.yml`)**: Al hacer push a `main`, construye y publica las imágenes Docker duales (`ghcr.io/.../backend` y `ghcr.io/.../frontend`) en GHCR de forma automática.
+- **CD (`cd.yml`)**: Al hacer push a `main`, construye y publica las imágenes Docker duales (`ghcr.io/.../backend` y `ghcr.io/.../frontend`) en GHCR. Si Portainer usa tags fijos por SHA en su compose, el webhook no actualiza esos tags automáticamente; consulta [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#actualizaciones-y-cicd) antes de asumir que producción quedó desplegada.
 
 ## 📄 Licencia
 

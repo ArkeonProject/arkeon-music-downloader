@@ -153,6 +153,13 @@ def _sync_existing_tracks_to_navidrome(source_id: int, playlist_id: str, source_
         
         # Get current playlist songs
         current_songs = client.get_playlist_songs(playlist_id)
+        if current_songs is None:
+            logger.warning(
+                "Could not fetch current songs for Navidrome playlist '%s'; skipping existing-track sync to avoid duplicates",
+                source_name,
+            )
+            return
+
         current_song_ids = {s.get("id") for s in current_songs}
         
         added_count = 0

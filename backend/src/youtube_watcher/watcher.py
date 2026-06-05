@@ -407,6 +407,15 @@ class YouTubeWatcher:
         """Add song to playlist by ID, avoiding duplicates"""
         try:
             current_songs = client.get_playlist_songs(playlist_id)
+            if current_songs is None:
+                logger.warning(
+                    "Could not fetch songs for Navidrome playlist '%s' (%s); skipping add for '%s' to avoid duplicates",
+                    playlist_label,
+                    playlist_id,
+                    title,
+                )
+                return
+
             current_song_ids = [s.get("id") for s in current_songs]
             
             if song_id in current_song_ids:
