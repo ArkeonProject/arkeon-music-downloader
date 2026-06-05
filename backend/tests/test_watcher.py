@@ -133,6 +133,21 @@ class TestYouTubeWatcher:
 
         client.update_playlist.assert_called_once_with("playlist-1", song_ids_to_add=["new-song"])
 
+    def test_add_song_to_playlist_by_id_skips_when_playlist_lookup_fails(self, tmp_path):
+        watcher = YouTubeWatcher(str(tmp_path))
+        client = Mock()
+        client.get_playlist_songs.return_value = None
+
+        watcher._add_song_to_playlist_by_id(
+            client,
+            "playlist-1",
+            "song-1",
+            "Song",
+            "Test Playlist",
+        )
+
+        client.update_playlist.assert_not_called()
+
     @patch("youtube_watcher.watcher.time.sleep", return_value=None)
     def test_add_to_navidrome_playlist_triggers_scan_and_retries(self, _mock_sleep, tmp_path):
         watcher = YouTubeWatcher(str(tmp_path))

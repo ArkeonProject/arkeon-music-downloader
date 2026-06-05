@@ -188,7 +188,10 @@ class NavidromeClient:
         if name:
             params["name"] = name
         if song_ids_to_add:
-            params["songIdToAdd"] = song_ids_to_add
+            # Navidrome accepts duplicate songIdToAdd values and will create
+            # duplicate playlist rows. Deduplicate inside a single request while
+            # preserving order so accidental repeated IDs are idempotent.
+            params["songIdToAdd"] = list(dict.fromkeys(song_ids_to_add))
         if song_indexes_to_remove:
             params["songIndexToRemove"] = song_indexes_to_remove
 
@@ -208,11 +211,26 @@ class NavidromeClient:
             logger.info(f"Deleted Navidrome playlist ID: {playlist_id}")
         return result is not None
 
-    def get_playlist_songs(self, playlist_id: str) -> list[dict]:
-        """Get all songs in a playlist"""
+    def get_playlist_songs(self, playlist_id: str) -> Optional[list[dict]]:
+        """
+        Get all songs in a playlist.
+
+        Returns None when the playlist lookup fails. This is intentionally
+        distinct from an empty list: callers must not add songs when Navidrome
+        timed out or returned an API error, otherwise transient lookup failures
+        create duplicate playlist rows.
+        """
         result = self._make_request("getPlaylist", {"id": playlist_id})
-        if result and "playlist" in result:
-            return result["playlist"].get("entry", [])
+        if result is None:
+            return None
+        if "playlist" not in result:
+            return []
+
+        entries = result["playlist"].get("entry", [])
+        if isinstance(entries, dict):
+            return [entries]
+        if isinstance(entries, list):
+            return entries
         return []
 
     def playlist_exists(self, playlist_id: str) -> bool:

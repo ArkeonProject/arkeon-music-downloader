@@ -107,3 +107,36 @@ class TestNavidromeClient:
 
         assert client.ensure_playlist("Toda la Musica") == "canonical-large"
         client.create_playlist.assert_not_called()
+
+    def test_get_playlist_songs_returns_none_when_lookup_fails(self):
+        client = NavidromeClient("https://example.com", "user", "pass")
+        client._make_request = Mock(return_value=None)
+
+        assert client.get_playlist_songs("playlist-1") is None
+
+    def test_get_playlist_songs_normalizes_single_entry_response(self):
+        client = NavidromeClient("https://example.com", "user", "pass")
+        client._make_request = Mock(
+            return_value={"playlist": {"entry": {"id": "song-1", "title": "Song"}}}
+        )
+
+        assert client.get_playlist_songs("playlist-1") == [
+            {"id": "song-1", "title": "Song"}
+        ]
+
+    def test_update_playlist_deduplicates_song_ids_to_add_within_request(self):
+        client = NavidromeClient("https://example.com", "user", "pass")
+
+        with patch("youtube_watcher.navidrome_client.requests.get") as mock_get:
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"subsonic-response": {"status": "ok"}}
+            mock_get.return_value = response
+
+            client.update_playlist(
+                "playlist-1", song_ids_to_add=["song-1", "song-1", "song-2"]
+            )
+
+        called_params = mock_get.call_args.kwargs["params"]
+        song_params = [item for item in called_params if item[0] == "songIdToAdd"]
+        assert song_params == [("songIdToAdd", "song-1"), ("songIdToAdd", "song-2")]
