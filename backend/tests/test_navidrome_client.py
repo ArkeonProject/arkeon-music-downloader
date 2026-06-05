@@ -47,7 +47,9 @@ class TestNavidromeClient:
 
     def test_ensure_playlist_reuses_existing_playlist(self):
         client = NavidromeClient("https://example.com", "user", "pass")
-        client.find_playlist_by_name = Mock(return_value={"id": "existing-1", "name": "Lo más nuevo"})
+        client.get_playlists = Mock(
+            return_value=[{"id": "existing-1", "name": "Lo más nuevo"}]
+        )
         client.create_playlist = Mock()
 
         playlist_id = client.ensure_playlist("Lo más nuevo")
@@ -57,10 +59,51 @@ class TestNavidromeClient:
 
     def test_ensure_playlist_creates_missing_playlist(self):
         client = NavidromeClient("https://example.com", "user", "pass")
-        client.find_playlist_by_name = Mock(return_value=None)
+        client.get_playlists = Mock(return_value=[])
         client.create_playlist = Mock(return_value="new-1")
 
         playlist_id = client.ensure_playlist("Toda la Musica")
 
         assert playlist_id == "new-1"
         client.create_playlist.assert_called_once_with("Toda la Musica")
+
+    def test_get_playlists_returns_none_when_lookup_fails(self):
+        client = NavidromeClient("https://example.com", "user", "pass")
+        client._make_request = Mock(return_value=None)
+
+        assert client.get_playlists() is None
+
+    def test_ensure_playlist_does_not_create_when_lookup_fails(self):
+        client = NavidromeClient("https://example.com", "user", "pass")
+        client.get_playlists = Mock(return_value=None)
+        client.create_playlist = Mock(return_value="should-not-create")
+
+        playlist_id = client.ensure_playlist("Toda la Musica")
+
+        assert playlist_id is None
+        client.create_playlist.assert_not_called()
+
+    def test_get_playlists_normalizes_single_playlist_response(self):
+        client = NavidromeClient("https://example.com", "user", "pass")
+        client._make_request = Mock(
+            return_value={
+                "playlists": {"playlist": {"id": "one", "name": "Toda la Musica"}}
+            }
+        )
+
+        assert client.get_playlists() == [{"id": "one", "name": "Toda la Musica"}]
+
+    def test_ensure_playlist_reuses_largest_matching_playlist_when_duplicates_exist(
+        self,
+    ):
+        client = NavidromeClient("https://example.com", "user", "pass")
+        client.get_playlists = Mock(
+            return_value=[
+                {"id": "duplicate-small", "name": "Toda la Musica", "songCount": 1},
+                {"id": "canonical-large", "name": "Toda la Musica", "songCount": 452},
+            ]
+        )
+        client.create_playlist = Mock()
+
+        assert client.ensure_playlist("Toda la Musica") == "canonical-large"
+        client.create_playlist.assert_not_called()
