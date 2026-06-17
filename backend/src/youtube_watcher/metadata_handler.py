@@ -30,6 +30,7 @@ class MetadataHandler:
         album: str,
         year: Optional[str],
         thumbnail_url: Optional[str],
+        youtube_id: Optional[str] = None,
     ):
         """
         Añadir metadatos y portada al archivo FLAC.
@@ -53,6 +54,8 @@ class MetadataHandler:
             if year:
                 audio["date"] = year
                 audio["originalyear"] = year
+            if youtube_id:
+                audio["comment"] = f"youtube_id={youtube_id}"
 
             # Portada
             if thumbnail_url:

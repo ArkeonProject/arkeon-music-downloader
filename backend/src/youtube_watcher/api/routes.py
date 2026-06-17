@@ -18,10 +18,12 @@ router = APIRouter()
 
 # --- Schemas ---
 
+
 class SourceCreate(BaseModel):
     url: str
     name: str
-    type: str = "playlist" # playlist, artist, channel
+    type: str = "playlist"  # playlist, artist, channel
+
 
 class SourceResponse(BaseModel):
     id: int
@@ -34,6 +36,7 @@ class SourceResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class TrackResponse(BaseModel):
     id: int
@@ -48,9 +51,15 @@ class TrackResponse(BaseModel):
     created_at: datetime
     published_at: str | None = None
     artist: str | None = None
+    navidrome_song_id: str | None = None
+    navidrome_synced_at: datetime | None = None
+    navidrome_sync_status: str | None = None
+    navidrome_sync_error: str | None = None
+    navidrome_sync_attempted_at: datetime | None = None
 
     class Config:
         from_attributes = True
+
 
 class PaginatedTracks(BaseModel):
     items: List[TrackResponse]
@@ -58,10 +67,13 @@ class PaginatedTracks(BaseModel):
     page: int
     pages: int
 
+
 class SingleDownloadRequest(BaseModel):
     url: str
-    
+
+
 # --- Source Routes ---
+
 
 @router.get("/sources", response_model=List[SourceResponse])
 def get_sources(db: Session = Depends(get_db)):
@@ -69,88 +81,96 @@ def get_sources(db: Session = Depends(get_db)):
     sources = db.query(Source).all()
     return sources
 
+
 @router.post("/sources", response_model=SourceResponse)
 def create_source(source: SourceCreate, db: Session = Depends(get_db)):
     """Add a new source to monitor"""
     db_source = db.query(Source).filter(Source.url == source.url).first()
     if db_source:
         raise HTTPException(status_code=400, detail="Source URL already registered")
-    
+
     new_source = Source(**source.model_dump())
-    
+
     # Create Navidrome playlist if configured and source is a playlist/artist
     if source.type in ("playlist", "artist"):
         navidrome_id = _create_navidrome_playlist(source.name)
         if navidrome_id:
             new_source.navidrome_playlist_id = navidrome_id
-    
+
     db.add(new_source)
     db.commit()
     db.refresh(new_source)
-    
+
     # Sync existing tracks to Navidrome playlist after source is created
     if new_source.navidrome_playlist_id:
-        _sync_existing_tracks_to_navidrome(new_source.id, new_source.navidrome_playlist_id, source.name)
-    
+        _sync_existing_tracks_to_navidrome(
+            new_source.id, new_source.navidrome_playlist_id, source.name
+        )
+
     return new_source
 
 
 def _create_navidrome_playlist(name: str) -> str | None:
     """Create a playlist in Navidrome"""
     from ..navidrome_client import NavidromeClient
-    
+
     navidrome_url = os.getenv("NAVIDROME_URL")
     navidrome_user = os.getenv("NAVIDROME_USER")
     navidrome_password = os.getenv("NAVIDROME_PASSWORD")
-    
+
     if not all([navidrome_url, navidrome_user, navidrome_password]):
         return None
-    
+
     try:
         client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
-        
+
         if not client.ping():
             logger.warning("Could not connect to Navidrome, skipping playlist creation")
             return None
-        
+
         playlist_id = client.ensure_playlist(name)
         if playlist_id:
             logger.info(f"Ensured Navidrome playlist '{name}' with ID: {playlist_id}")
-        
+
         return playlist_id
     except Exception as e:
         logger.error(f"Error creating Navidrome playlist: {e}")
         return None
 
 
-def _sync_existing_tracks_to_navidrome(source_id: int, playlist_id: str, source_name: str):
+def _sync_existing_tracks_to_navidrome(
+    source_id: int, playlist_id: str, source_name: str
+):
     """Sync existing tracks from a source to its Navidrome playlist"""
     from ..navidrome_client import NavidromeClient
-    
+
     navidrome_url = os.getenv("NAVIDROME_URL")
     navidrome_user = os.getenv("NAVIDROME_USER")
     navidrome_password = os.getenv("NAVIDROME_PASSWORD")
-    
+
     if not all([navidrome_url, navidrome_user, navidrome_password]):
         return
-    
+
     try:
         client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
-        
+
         # Get existing completed tracks for this source
         from ..db.database import SessionLocal
         from ..db.models import Track
-        
+
         with SessionLocal() as db:
-            existing_tracks = db.query(Track).filter(
-                Track.source_id == source_id,
-                Track.download_status == "completed"
-            ).all()
-        
+            existing_tracks = (
+                db.query(Track)
+                .filter(
+                    Track.source_id == source_id, Track.download_status == "completed"
+                )
+                .all()
+            )
+
         if not existing_tracks:
             logger.info(f"No existing tracks to sync for source '{source_name}'")
             return
-        
+
         # Get current playlist songs
         current_songs = client.get_playlist_songs(playlist_id)
         if current_songs is None:
@@ -161,35 +181,65 @@ def _sync_existing_tracks_to_navidrome(source_id: int, playlist_id: str, source_
             return
 
         current_song_ids = {s.get("id") for s in current_songs}
-        
+
         added_count = 0
         song_ids_to_add = []
         for track in existing_tracks:
-            # Search for song in Navidrome
-            songs = client.search_songs(track.title)
-            navidrome_song_id = None
-            
-            for song in songs:
-                if song.get("title") == track.title or track.youtube_id in song.get("comment", ""):
-                    navidrome_song_id = song.get("id")
-                    break
-            
-            if navidrome_song_id and navidrome_song_id not in current_song_ids:
-                current_song_ids.add(navidrome_song_id)
-                song_ids_to_add.append(navidrome_song_id)
-                added_count += 1
-        
-        if song_ids_to_add:
-            success = client.update_playlist(playlist_id, song_ids_to_add=song_ids_to_add)
-            if success:
-                logger.info(f"✅ Synced {added_count} existing tracks to Navidrome playlist '{source_name}'")
+            # Search first by persisted Navidrome ID, then by YouTube ID/comment,
+            # then by title as a fallback for older FLAC files.
+            navidrome_song_id = track.navidrome_song_id
+            if not navidrome_song_id:
+                searches = [track.youtube_id, track.title]
+                for query in searches:
+                    if not query:
+                        continue
+                    songs = client.search_songs(query)
+                    for song in songs:
+                        if (
+                            track.youtube_id in str(song.get("comment", ""))
+                            or song.get("title") == track.title
+                        ):
+                            navidrome_song_id = song.get("id")
+                            break
+                    if navidrome_song_id:
+                        break
+
+            track.navidrome_sync_attempted_at = datetime.utcnow()
+            if navidrome_song_id:
+                track.navidrome_song_id = navidrome_song_id
+                track.navidrome_sync_status = "synced"
+                track.navidrome_sync_error = None
+                track.navidrome_synced_at = datetime.utcnow()
+                if navidrome_song_id not in current_song_ids:
+                    current_song_ids.add(navidrome_song_id)
+                    song_ids_to_add.append(navidrome_song_id)
+                    added_count += 1
             else:
-                logger.warning(f"Failed to sync tracks to Navidrome playlist '{source_name}'")
+                track.navidrome_sync_status = "failed"
+                track.navidrome_sync_error = "song_not_found_in_navidrome"
+        with SessionLocal() as db:
+            for track in existing_tracks:
+                db.merge(track)
+            db.commit()
+
+        if song_ids_to_add:
+            success = client.update_playlist(
+                playlist_id, song_ids_to_add=song_ids_to_add
+            )
+            if success:
+                logger.info(
+                    f"✅ Synced {added_count} existing tracks to Navidrome playlist '{source_name}'"
+                )
+            else:
+                logger.warning(
+                    f"Failed to sync tracks to Navidrome playlist '{source_name}'"
+                )
         else:
             logger.info(f"No new tracks to sync for source '{source_name}'")
-            
+
     except Exception as e:
         logger.error(f"Error syncing existing tracks to Navidrome: {e}")
+
 
 @router.delete("/sources/{source_id}")
 def delete_source(source_id: int, db: Session = Depends(get_db)):
@@ -197,11 +247,11 @@ def delete_source(source_id: int, db: Session = Depends(get_db)):
     source = db.query(Source).filter(Source.id == source_id).first()
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
-    
+
     # Delete Navidrome playlist before removing source from DB
     if source.navidrome_playlist_id:
         _delete_navidrome_playlist(source.navidrome_playlist_id, source.name)
-    
+
     db.delete(source)
     db.commit()
     return {"status": "success", "message": f"Source {source_id} deleted"}
@@ -212,41 +262,47 @@ def _delete_navidrome_playlist(playlist_id: str, source_name: str):
     navidrome_url = os.getenv("NAVIDROME_URL")
     navidrome_user = os.getenv("NAVIDROME_USER")
     navidrome_password = os.getenv("NAVIDROME_PASSWORD")
-    
+
     if not all([navidrome_url, navidrome_user, navidrome_password]):
         return
-    
+
     try:
         from ..navidrome_client import NavidromeClient
+
         client = NavidromeClient(navidrome_url, navidrome_user, navidrome_password)
-        
+
         if not client.ping():
             logger.warning("Could not connect to Navidrome, skipping playlist deletion")
             return
-        
+
         success = client.delete_playlist(playlist_id)
         if success:
-            logger.info(f"🗑️ Deleted Navidrome playlist '{source_name}' (ID: {playlist_id})")
+            logger.info(
+                f"🗑️ Deleted Navidrome playlist '{source_name}' (ID: {playlist_id})"
+            )
         else:
             logger.warning(f"Failed to delete Navidrome playlist '{source_name}'")
     except Exception as e:
         logger.error(f"Error deleting Navidrome playlist '{source_name}': {e}")
+
 
 @router.put("/sources/{source_id}/status")
 def update_source_status(source_id: int, status: str, db: Session = Depends(get_db)):
     """Pause or resume a source"""
     if status not in ["active", "paused"]:
         raise HTTPException(status_code=400, detail="Invalid status")
-        
+
     source = db.query(Source).filter(Source.id == source_id).first()
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
-        
+
     source.status = status
     db.commit()
     return {"status": "success", "new_status": status}
 
+
 # --- Track Routes ---
+
 
 @router.get("/tracks", response_model=PaginatedTracks)
 def get_tracks(
@@ -259,12 +315,12 @@ def get_tracks(
     year: str | None = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """List downloaded and pending tracks with optional filters and pagination"""
     query = db.query(Track)
-    
-    if status and status != 'all':
+
+    if status and status != "all":
         query = query.filter(Track.download_status == status)
     if source_id:
         query = query.filter(Track.source_id == source_id)
@@ -274,28 +330,32 @@ def get_tracks(
         query = query.filter(Track.published_at.startswith(year))
     if search:
         query = query.filter(Track.title.ilike(f"%{search}%"))
-        
+
     valid_sort_columns = {
-        "created_at": Track.created_at, 
-        "downloaded_at": Track.downloaded_at, 
+        "created_at": Track.created_at,
+        "downloaded_at": Track.downloaded_at,
         "published_at": Track.published_at,
         "title": Track.title,
         "artist": Track.artist,
-        "source_id": Track.source_id
+        "source_id": Track.source_id,
     }
     sort_column = valid_sort_columns.get(sort_by, Track.created_at)
-    
+
     if sort_order.lower() == "asc":
-        query = query.order_by(sort_column.is_(None), sort_column.asc(), Track.id.desc())
+        query = query.order_by(
+            sort_column.is_(None), sort_column.asc(), Track.id.desc()
+        )
     else:
-        query = query.order_by(sort_column.is_(None), sort_column.desc(), Track.id.desc())
-        
+        query = query.order_by(
+            sort_column.is_(None), sort_column.desc(), Track.id.desc()
+        )
+
     total = query.count()
     pages = (total + page_size - 1) // page_size if page_size > 0 else 0
-    
+
     skip = (page - 1) * page_size
     tracks = query.offset(skip).limit(page_size).all()
-    
+
     # Enrich with source name
     result = []
     for t in tracks:
@@ -304,8 +364,9 @@ def get_tracks(
             data["source_name"] = t.source.name
             data["source_type"] = t.source.type
         result.append(data)
-    
+
     return {"items": result, "total": total, "page": page, "pages": pages}
+
 
 @router.get("/tracks/stats")
 def get_track_stats(db: Session = Depends(get_db)):
@@ -322,6 +383,7 @@ def get_track_stats(db: Session = Depends(get_db)):
         "ignored": counts.get("ignored", 0),
     }
 
+
 @router.get("/tracks/artists", response_model=List[str])
 def get_artists(db: Session = Depends(get_db)):
     """Get unique list of artists for filtering"""
@@ -330,10 +392,16 @@ def get_artists(db: Session = Depends(get_db)):
     valid_artists = [a[0] for a in artists if a[0] and a[0].strip()]
     return sorted(valid_artists)
 
+
 @router.get("/tracks/years", response_model=List[str])
 def get_years(db: Session = Depends(get_db)):
     """Get unique list of years for filtering"""
-    dates = db.query(Track.published_at).filter(Track.published_at.isnot(None)).distinct().all()
+    dates = (
+        db.query(Track.published_at)
+        .filter(Track.published_at.isnot(None))
+        .distinct()
+        .all()
+    )
     # Extract years (YYYY from YYYY-MM-DD or YYYY)
     years = set()
     for d in dates:
@@ -341,20 +409,21 @@ def get_years(db: Session = Depends(get_db)):
             years.add(d[0][:4])
     return sorted(list(years), reverse=True)
 
+
 @router.post("/tracks/download-single")
 def trigger_single_download(req: SingleDownloadRequest, db: Session = Depends(get_db)):
     """Extract video info and trigger download immediately"""
     import re
     import threading
-    
+
     # Extract youtube video ID from URL
     url = req.url.strip()
-    match = re.search(r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})', url)
+    match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
     if not match:
         raise HTTPException(status_code=400, detail="URL de YouTube no válida")
-    
+
     video_id = match.group(1)
-    
+
     # Check if already exists
     existing = db.query(Track).filter(Track.youtube_id == video_id).first()
     if existing:
@@ -363,34 +432,38 @@ def trigger_single_download(req: SingleDownloadRequest, db: Session = Depends(ge
         if existing.download_status == "ignored":
             existing.download_status = "pending"
             db.commit()
-    
+
     if not existing:
         # Create pending record — the title will be updated after download
         existing = Track(
             youtube_id=video_id,
             title=f"Descargando... ({video_id})",
             source_id=None,
-            download_status="pending"
+            download_status="pending",
         )
         db.add(existing)
         db.commit()
-    
+
     # Trigger download via the watcher in a background thread
     watcher = get_watcher()
     if watcher:
         video_data = {"id": video_id, "title": existing.title, "url": url}
+
         def _download():
             try:
                 from ..db.database import SessionLocal
+
                 with SessionLocal() as bg_db:
                     watcher._process_video(video_data, source_id=None, db=bg_db)
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).error(f"Error descargando {video_id}: {e}")
-        
+
         threading.Thread(target=_download, daemon=True).start()
-    
+
     return {"status": "downloading", "video_id": video_id}
+
 
 @router.delete("/tracks/{track_id}")
 def delete_track(track_id: int, db: Session = Depends(get_db)):
@@ -398,21 +471,26 @@ def delete_track(track_id: int, db: Session = Depends(get_db)):
     track = db.query(Track).filter(Track.id == track_id).first()
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
-    
+
     # 1. Physically delete the file if it exists
     import os
+
     if track.file_path and os.path.exists(track.file_path):
         try:
             os.remove(track.file_path)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Could not delete file: {e}")
-            
+
     # 2. Mark as ignored instead of removing from DB — prevents re-download
     track.download_status = "ignored"
     track.file_path = None
     db.commit()
-    
-    return {"status": "success", "message": f"Track {track_id} ignored (won't be re-downloaded)"}
+
+    return {
+        "status": "success",
+        "message": f"Track {track_id} ignored (won't be re-downloaded)",
+    }
+
 
 @router.put("/tracks/{track_id}/restore")
 def restore_track(track_id: int, db: Session = Depends(get_db)):
@@ -420,28 +498,35 @@ def restore_track(track_id: int, db: Session = Depends(get_db)):
     track = db.query(Track).filter(Track.id == track_id).first()
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
-    
+
     # 1. Reset status to pending
     track.download_status = "pending"
     db.commit()
-    
+
     # 2. Clear from watcher's failed cache to bypass the 24h block list
     watcher = get_watcher()
     if watcher and track.youtube_id in watcher.failed_downloads:
         watcher.failed_downloads.pop(track.youtube_id, None)
-    
+
     return {"status": "success", "message": f"Track {track_id} queued for re-download"}
 
+
 # --- Config Routes ---
+
 
 @router.get("/config/cookies")
 def get_cookies_status():
     """Check if a custom cookies.txt is currently loaded"""
     # Use the mounted volume at /data if inside docker, fallback to local path otherwise
-    base_dir = "/data" if os.path.exists("/data") else str(Path(__file__).parent.parent.parent.parent / "data")
+    base_dir = (
+        "/data"
+        if os.path.exists("/data")
+        else str(Path(__file__).parent.parent.parent.parent / "data")
+    )
     cookies_path = Path(base_dir) / "cookies.txt"
     exists = cookies_path.exists()
     return {"status": "success", "exists": exists}
+
 
 @router.post("/config/cookies")
 async def upload_cookies(file: UploadFile = File(...)):
@@ -449,39 +534,50 @@ async def upload_cookies(file: UploadFile = File(...)):
     if not file.filename.endswith(".txt"):
         raise HTTPException(status_code=400, detail="Only .txt files are allowed")
 
-    base_dir = "/data" if os.path.exists("/data") else str(Path(__file__).parent.parent.parent.parent / "data")
+    base_dir = (
+        "/data"
+        if os.path.exists("/data")
+        else str(Path(__file__).parent.parent.parent.parent / "data")
+    )
     cookies_path = Path(base_dir) / "cookies.txt"
     cookies_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Save the file
     try:
         content = await file.read()
         cookies_path.write_bytes(content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save cookies: {str(e)}")
-        
+
     # Reload watcher instance
     watcher = get_watcher()
     if watcher:
         watcher.update_cookies(str(cookies_path))
-        
+
     return {"status": "success", "message": "Cookies uploaded and watcher reloaded."}
+
 
 @router.delete("/config/cookies")
 def delete_cookies():
     """Delete the custom cookies.txt file and reload the watcher instance"""
-    base_dir = "/data" if os.path.exists("/data") else str(Path(__file__).parent.parent.parent.parent / "data")
+    base_dir = (
+        "/data"
+        if os.path.exists("/data")
+        else str(Path(__file__).parent.parent.parent.parent / "data")
+    )
     cookies_path = Path(base_dir) / "cookies.txt"
-    
+
     if cookies_path.exists():
         try:
             cookies_path.unlink()
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to delete cookies: {str(e)}")
-            
+            raise HTTPException(
+                status_code=500, detail=f"Failed to delete cookies: {str(e)}"
+            )
+
     # Reload watcher instance removing cookies
     watcher = get_watcher()
     if watcher:
         watcher.update_cookies(None)
-        
+
     return {"status": "success", "message": "Cookies deleted and watcher reloaded."}

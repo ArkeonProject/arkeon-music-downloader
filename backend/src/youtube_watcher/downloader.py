@@ -33,12 +33,12 @@ class YouTubeDownloader:
 
         # Crear directorio si no existe
         self.download_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Plantilla de salida de yt-dlp
         # Usamos %(id)s para que yt-dlp maneje el nombre dinámicamente según el video,
         # lo que nos permite usar una sola instancia persistente de YoutubeDL
         out_tmpl = str(self.download_path / "temp_%(id)s.%(ext)s")
-        
+
         ydl_opts = {
             "format": "bestaudio/best",
             "outtmpl": out_tmpl,
@@ -59,7 +59,7 @@ class YouTubeDownloader:
 
         if self.cookies_path:
             ydl_opts["cookiefile"] = self.cookies_path
-            
+
         self._ydl = yt_dlp.YoutubeDL(ydl_opts)
 
     def download_and_convert(self, video_data: Dict) -> Optional[Dict]:
@@ -136,7 +136,7 @@ class YouTubeDownloader:
         if not opus_result:
             return None
         temp_opus, full_info = opus_result
-        
+
         if full_info:
             new_upload_date = full_info.get("upload_date")
             if new_upload_date and len(new_upload_date) == 8:
@@ -153,7 +153,13 @@ class YouTubeDownloader:
 
         # Paso 3: Añadir metadatos y portada
         self.metadata_handler.add_metadata_and_cover(
-            output_path, title, artist, album, formatted_date, thumbnail_url
+            output_path,
+            title,
+            artist,
+            album,
+            formatted_date,
+            thumbnail_url,
+            youtube_id=video_data.get("id"),
         )
 
         logger.info(f"FLAC listo: {filename}")
@@ -165,7 +171,9 @@ class YouTubeDownloader:
             "published_at": formatted_date,
         }
 
-    def _download_opus(self, video_data: Dict, title: str) -> Optional[tuple[Path, Dict]]:
+    def _download_opus(
+        self, video_data: Dict, title: str
+    ) -> Optional[tuple[Path, Dict]]:
         """
         Descargar audio en formato Opus.
 
@@ -284,7 +292,7 @@ class YouTubeDownloader:
 
     def __del__(self):
         """Asegurar el cierre de la instancia de YoutubeDL."""
-        if hasattr(self, '_ydl') and self._ydl:
+        if hasattr(self, "_ydl") and self._ydl:
             try:
                 self._ydl.close()
             except Exception:
