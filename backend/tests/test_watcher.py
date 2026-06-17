@@ -5,6 +5,7 @@ from youtube_watcher.watcher import YouTubeWatcher
 from youtube_watcher.playlist_monitor import PlaylistMonitor
 from youtube_watcher.db.models import Track, Source
 
+
 class TestYouTubeWatcher:
     """Tests para la clase principal YouTubeWatcher (con DB mocking)"""
 
@@ -28,9 +29,9 @@ class TestYouTubeWatcher:
     def test_process_video_skips_invalid_entries(self, tmp_path):
         watcher = YouTubeWatcher(str(tmp_path))
         watcher.downloader.download_and_convert = Mock()
-        
+
         db_mock = MagicMock()
-        
+
         watcher._process_video({"id": None, "title": None}, 1, db_mock)
         watcher._process_video({"id": "abc", "title": "[Deleted video]"}, 1, db_mock)
         watcher._process_video({"id": "def", "title": "   "}, 1, db_mock)
@@ -43,6 +44,7 @@ class TestYouTubeWatcher:
     def test_process_video_success_new_track(self, tmp_path):
         watcher = YouTubeWatcher(str(tmp_path))
         video_data = {"id": "abc123", "title": "Song", "channel": "Artist"}
+        watcher._sync_track_to_navidrome = Mock()
 
         db_mock = MagicMock()
         # Mock para que retorne None al buscar el track (simulando que es nuevo)
@@ -54,54 +56,211 @@ class TestYouTubeWatcher:
                 "filename": "Artist - Song.flac",
                 "title": "Song",
             }
-        watcher.downloader.download_and_convert = Mock(side_effect=fake_download_and_convert)
-        
+
+        watcher.downloader.download_and_convert = Mock(
+            side_effect=fake_download_and_convert
+        )
+
         watcher._process_video(video_data, source_id=1, db=db_mock)
 
         # Verifica que se haya intentando añadir a la base de datos
         assert db_mock.add.called
         assert db_mock.commit.called
         assert watcher.downloader.download_and_convert.called
+        synced_track = watcher._sync_track_to_navidrome.call_args.args[1]
+        assert synced_track.youtube_id == "abc123"
+        assert synced_track.title == "Song"
+        watcher._sync_track_to_navidrome.assert_called_once_with(
+            db_mock,
+            synced_track,
+            1,
+            is_new_download=True,
+        )
 
     def test_process_video_skips_completed_track(self, tmp_path):
         watcher = YouTubeWatcher(str(tmp_path))
         video_data = {"id": "abc123", "title": "Song"}
+        watcher._sync_track_to_navidrome = Mock()
 
         db_mock = MagicMock()
         # Mock para que devuelva un track completado
-        existing_track = Track(youtube_id="abc123", download_status="completed")
-        db_mock.query.return_value.filter.return_value.first.return_value = existing_track
+        existing_track = Track(
+            youtube_id="abc123", title="Song", download_status="completed"
+        )
+        db_mock.query.return_value.filter.return_value.first.return_value = (
+            existing_track
+        )
         watcher.downloader.download_and_convert = Mock()
-        
+
         watcher._process_video(video_data, source_id=1, db=db_mock)
 
         # No se debe intentar descargar si ya está "completed"
         watcher.downloader.download_and_convert.assert_not_called()
+        watcher._sync_track_to_navidrome.assert_called_once_with(
+            db_mock,
+            existing_track,
+            1,
+            is_new_download=False,
+        )
 
     @patch("youtube_watcher.watcher.PlaylistMonitor")
     @patch("youtube_watcher.watcher.SessionLocal")
     def test_check_all_sources(self, mock_session_class, mock_monitor_class, tmp_path):
         """Testea el ciclo principal de revisión de fuentes en BD"""
         watcher = YouTubeWatcher(str(tmp_path), enable_sync_deletions=False)
-        
+
         db_mock = MagicMock()
         mock_session_class.return_value.__enter__.return_value = db_mock
-        
+
         # Simular una fuente activa devuelta por BD
-        mock_source = Source(id=1, url="http://youtube", name="P1", status="active", type="playlist")
+        mock_source = Source(
+            id=1, url="http://youtube", name="P1", status="active", type="playlist"
+        )
         db_mock.query.return_value.filter.return_value.all.return_value = [mock_source]
-        
+
         # Simular que el monitor devuelve 1 video
         mock_monitor_instance = MagicMock()
-        mock_monitor_instance.get_playlist_videos.return_value = [{"id": "vid1", "title": "Song"}]
+        mock_monitor_instance.get_playlist_videos.return_value = [
+            {"id": "vid1", "title": "Song"}
+        ]
         mock_monitor_class.return_value = mock_monitor_instance
-        
+
         watcher._process_video = Mock()
-        
+
         watcher._check_all_sources()
-        
+
         # Verificar que se procesó el video con sus respectivos DB arguments
-        watcher._process_video.assert_called_once_with({"id": "vid1", "title": "Song"}, 1, db_mock)
+        watcher._process_video.assert_called_once_with(
+            {"id": "vid1", "title": "Song"}, 1, db_mock
+        )
+
+    def test_add_song_to_playlists_uses_song_id_to_add(self, tmp_path):
+        watcher = YouTubeWatcher(str(tmp_path))
+        client = Mock()
+        client.get_playlist_songs.return_value = [{"id": "existing-song"}]
+        client.update_playlist.return_value = True
+
+        ok = watcher._add_song_to_playlists(
+            client,
+            {"Test Playlist": "playlist-1"},
+            "new-song",
+            "Song",
+        )
+
+        assert ok is True
+        client.update_playlist.assert_called_once_with(
+            "playlist-1", song_ids_to_add=["new-song"]
+        )
+
+    def test_add_song_to_playlists_skips_when_playlist_lookup_fails(self, tmp_path):
+        watcher = YouTubeWatcher(str(tmp_path))
+        client = Mock()
+        client.get_playlist_songs.return_value = None
+
+        ok = watcher._add_song_to_playlists(
+            client,
+            {"Test Playlist": "playlist-1"},
+            "song-1",
+            "Song",
+        )
+
+        assert ok is False
+        client.update_playlist.assert_not_called()
+
+    @patch("youtube_watcher.watcher.time.sleep", return_value=None)
+    def test_sync_track_to_navidrome_triggers_scan_for_new_download(
+        self, _mock_sleep, tmp_path, monkeypatch
+    ):
+        watcher = YouTubeWatcher(str(tmp_path))
+        watcher._find_navidrome_song_id = Mock(side_effect=[None, "song-nav"])
+        watcher._add_song_to_playlists = Mock(return_value=True)
+
+        source = Source(
+            id=1, name="Playlist A", type="playlist", navidrome_playlist_id="pl-source"
+        )
+        track = Track(
+            youtube_id="yt123", title="Song", download_status="completed", source_id=1
+        )
+
+        db_mock = MagicMock()
+        db_mock.query.return_value.filter.return_value.first.return_value = source
+
+        client_instance = Mock()
+        client_instance.start_scan.return_value = True
+        client_instance.ensure_playlist.side_effect = ["pl-global", "pl-new"]
+
+        monkeypatch.setenv("NAVIDROME_URL", "https://music.example.com")
+        monkeypatch.setenv("NAVIDROME_USER", "user")
+        monkeypatch.setenv("NAVIDROME_PASSWORD", "pass")
+        monkeypatch.setenv("NAVIDROME_GLOBAL_PLAYLIST_NAME", "Toda la Musica")
+        monkeypatch.setenv("NAVIDROME_NEW_PLAYLIST_NAME", "Lo más nuevo")
+
+        with patch(
+            "youtube_watcher.watcher.NavidromeClient",
+            create=True,
+            return_value=client_instance,
+        ):
+            # Import inside method uses local import; patch the actual module too.
+            with patch(
+                "youtube_watcher.navidrome_client.NavidromeClient",
+                return_value=client_instance,
+            ):
+                watcher._sync_track_to_navidrome(
+                    db_mock, track, 1, is_new_download=True
+                )
+
+        client_instance.start_scan.assert_called_once_with()
+        assert track.navidrome_song_id == "song-nav"
+        assert track.navidrome_sync_status == "synced"
+        assert watcher._add_song_to_playlists.call_count == 1
+
+    def test_sync_track_to_navidrome_skips_synced_track(self, tmp_path, monkeypatch):
+        watcher = YouTubeWatcher(str(tmp_path))
+        monkeypatch.setenv("NAVIDROME_URL", "https://music.example.com")
+        monkeypatch.setenv("NAVIDROME_USER", "user")
+        monkeypatch.setenv("NAVIDROME_PASSWORD", "pass")
+        track = Track(
+            youtube_id="yt123",
+            title="Song",
+            download_status="completed",
+            navidrome_song_id="song-nav",
+            navidrome_sync_status="synced",
+        )
+        watcher._find_navidrome_song_id = Mock()
+        db_mock = MagicMock()
+
+        watcher._sync_track_to_navidrome(db_mock, track, 1, is_new_download=False)
+
+        watcher._find_navidrome_song_id.assert_not_called()
+        db_mock.commit.assert_not_called()
+
+    def test_resolve_target_playlists_relinks_stale_source_playlist_id(
+        self, tmp_path, monkeypatch
+    ):
+        watcher = YouTubeWatcher(str(tmp_path))
+        source = Source(
+            id=1, name="Lpz List", type="playlist", navidrome_playlist_id="stale-id"
+        )
+        db_mock = MagicMock()
+        db_mock.query.return_value.filter.return_value.first.return_value = source
+        client = Mock()
+        client.playlist_exists.return_value = False
+        client.ensure_playlist.side_effect = [
+            "pl-global",
+            "pl-source-relinked",
+            "pl-new",
+        ]
+
+        monkeypatch.setenv("NAVIDROME_GLOBAL_PLAYLIST_NAME", "Toda la Musica")
+        monkeypatch.setenv("NAVIDROME_NEW_PLAYLIST_NAME", "Lo más nuevo")
+
+        playlists = watcher._resolve_target_playlists(
+            db_mock, client, 1, is_new_download=True
+        )
+
+        assert source.navidrome_playlist_id == "pl-source-relinked"
+        assert playlists["Lpz List"] == "pl-source-relinked"
+        assert db_mock.commit.call_count >= 1
 
 
 class TestPlaylistMonitor:
@@ -114,12 +273,14 @@ class TestPlaylistMonitor:
     @patch("yt_dlp.YoutubeDL")
     def test_get_playlist_videos_success(self, mock_ydl_class):
         mock_instance = mock_ydl_class.return_value
-        
+
         # yt-dlp extract_info no longer accessed from context manager __enter__
-        mock_instance.extract_info.side_effect = [{
-            "entries": [{"id": "123", "title": "Test Video"}],
-            "title": "Mock Playlist"
-        }]
+        mock_instance.extract_info.side_effect = [
+            {
+                "entries": [{"id": "123", "title": "Test Video"}],
+                "title": "Mock Playlist",
+            }
+        ]
 
         monitor = PlaylistMonitor("https://example.com")
         videos = monitor.get_playlist_videos()
@@ -133,13 +294,13 @@ class TestPlaylistMonitor:
         mock_instance.extract_info.side_effect = Exception("yt-dlp error")
         monitor = PlaylistMonitor("https://example.com")
         videos = monitor.get_playlist_videos()
-        
+
         assert len(videos) == 0
 
     @patch("yt_dlp.YoutubeDL")
     def test_get_playlist_info_success(self, mock_ydl_class):
         mock_instance = mock_ydl_class.return_value
-        
+
         mock_instance.extract_info.return_value = {
             "title": "My Playlist",
             "uploader": "Tester",

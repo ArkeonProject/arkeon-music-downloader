@@ -55,12 +55,14 @@ def test_add_metadata_and_cover_sets_tags(monkeypatch, tmp_path):
         album="Test Album",
         year="2024",
         thumbnail_url="https://example.com/image.jpg",
+        youtube_id="yt123",
     )
 
     assert dummy.tags["title"] == "Test Song"
     assert dummy.tags["artist"] == "Test Artist"
     assert dummy.tags["album"] == "Test Album"
     assert dummy.tags["date"] == "2024"
+    assert dummy.tags["comment"] == "youtube_id=yt123"
     assert add_cover_called["called"] is True
     assert dummy.saved is True
 

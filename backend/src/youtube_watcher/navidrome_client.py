@@ -7,6 +7,7 @@ import hashlib
 import logging
 import requests
 from typing import Optional
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 
@@ -19,33 +20,57 @@ class NavidromeClient:
         self.username = username
         self.password = password
 
-    def _build_auth_params(self) -> str:
+    def _build_auth_params(self) -> dict[str, str]:
         """Build Subsonic authentication parameters"""
         import random
         import string
-        salt = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-        token = hashlib.md5(f"{self.password}{salt}".encode()).hexdigest()
-        return f"u={self.username}&t={token}&s={salt}&v=1.16.1&c=arkeon-music-downloader&f=json"
 
-    def _make_request(self, endpoint: str, params: Optional[dict] = None, method: str = "GET") -> Optional[dict]:
+        salt = "".join(random.choices(string.ascii_letters + string.digits, k=16))
+        token = hashlib.md5(f"{self.password}{salt}".encode()).hexdigest()
+        return {
+            "u": self.username,
+            "t": token,
+            "s": salt,
+            "v": "1.16.1",
+            "c": "arkeon-music-downloader",
+            "f": "json",
+        }
+
+    def _normalize_params(self, params: Optional[dict]) -> list[tuple[str, str]]:
+        normalized = list(self._build_auth_params().items())
+        if not params:
+            return normalized
+
+        for key, value in params.items():
+            if isinstance(value, list):
+                for item in value:
+                    normalized.append((key, str(item)))
+            elif value is not None:
+                normalized.append((key, str(value)))
+
+        return normalized
+
+    def _make_request(
+        self, endpoint: str, params: Optional[dict] = None, method: str = "GET"
+    ) -> Optional[dict]:
         """Make a request to the Subsonic API"""
-        url = f"{self.base_url}/rest/{endpoint}"
-        auth_params = self._build_auth_params()
-        
-        if params:
-            auth_params += "&" + "&".join(f"{k}={v}" for k, v in params.items())
+        endpoint_path = f"rest/{endpoint}"
+        url = urljoin(f"{self.base_url}/", endpoint_path)
+        request_params = self._normalize_params(params)
 
         try:
-            response = requests.get(f"{url}?{auth_params}", timeout=10)
+            response = requests.get(url, params=request_params, timeout=10)
             response.raise_for_status()
             data = response.json()
-            
+
             subsonic_response = data.get("subsonic-response", {})
             if subsonic_response.get("status") != "ok":
                 error = subsonic_response.get("error", {})
-                logger.error(f"Navidrome API error: {error.get('message', 'Unknown')} (code: {error.get('code')})")
+                logger.error(
+                    f"Navidrome API error: {error.get('message', 'Unknown')} (code: {error.get('code')})"
+                )
                 return None
-            
+
             return subsonic_response
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to connect to Navidrome: {e}")
@@ -59,22 +84,83 @@ class NavidromeClient:
         result = self._make_request("ping")
         return result is not None
 
-    def get_playlists(self) -> list[dict]:
-        """Get all playlists from Navidrome"""
+    def get_playlists(self) -> Optional[list[dict]]:
+        """
+        Get all playlists from Navidrome.
+
+        Returns None when the lookup itself fails. This is intentionally
+        distinct from an empty list: callers must not create a playlist when
+        Navidrome timed out or returned an API error, otherwise transient
+        failures create duplicate playlists with the same name.
+        """
         result = self._make_request("getPlaylists")
-        if result and "playlists" in result:
-            return result["playlists"].get("playlist", [])
+        if result is None:
+            return None
+        if "playlists" not in result:
+            return []
+
+        playlists = result["playlists"].get("playlist", [])
+        if isinstance(playlists, dict):
+            return [playlists]
+        if isinstance(playlists, list):
+            return playlists
         return []
+
+    @staticmethod
+    def _playlist_song_count(playlist: dict) -> int:
+        for key in ("songCount", "song_count"):
+            value = playlist.get(key)
+            if value is not None:
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return 0
+        return 0
+
+    def _find_best_playlist_match(
+        self, playlists: list[dict], name: str
+    ) -> Optional[dict]:
+        normalized_name = name.strip().casefold()
+        matches = [
+            playlist
+            for playlist in playlists
+            if str(playlist.get("name", "")).strip().casefold() == normalized_name
+        ]
+        if not matches:
+            return None
+        return max(matches, key=self._playlist_song_count)
 
     def find_playlist_by_name(self, name: str) -> Optional[dict]:
         """Find a playlist by name"""
         playlists = self.get_playlists()
-        for playlist in playlists:
-            if playlist.get("name") == name:
-                return playlist
-        return None
+        if playlists is None:
+            logger.warning(
+                "Could not fetch Navidrome playlists; refusing to create playlist '%s' blindly",
+                name,
+            )
+            return None
 
-    def create_playlist(self, name: str, song_ids: Optional[list[str]] = None) -> Optional[str]:
+        return self._find_best_playlist_match(playlists, name)
+
+    def ensure_playlist(self, name: str) -> Optional[str]:
+        """Find playlist by name or create it if confirmed missing"""
+        playlists = self.get_playlists()
+        if playlists is None:
+            logger.warning(
+                "Skipping Navidrome playlist creation for '%s' because playlist lookup failed",
+                name,
+            )
+            return None
+
+        existing_playlist = self._find_best_playlist_match(playlists, name)
+        if existing_playlist:
+            return existing_playlist.get("id")
+
+        return self.create_playlist(name)
+
+    def create_playlist(
+        self, name: str, song_ids: Optional[list[str]] = None
+    ) -> Optional[str]:
         """
         Create a new playlist in Navidrome
         Returns the playlist ID if successful, None otherwise
@@ -90,16 +176,32 @@ class NavidromeClient:
             return playlist_id
         return None
 
-    def update_playlist(self, playlist_id: str, name: Optional[str] = None, 
-                       song_ids: Optional[list[str]] = None) -> bool:
+    def update_playlist(
+        self,
+        playlist_id: str,
+        name: Optional[str] = None,
+        song_ids_to_add: Optional[list[str]] = None,
+        song_indexes_to_remove: Optional[list[int]] = None,
+    ) -> bool:
         """Update a playlist (add/remove songs, rename)"""
         params = {"playlistId": playlist_id}
         if name:
             params["name"] = name
-        if song_ids is not None:
-            params["songId"] = song_ids
+        if song_ids_to_add:
+            # Navidrome accepts duplicate songIdToAdd values and will create
+            # duplicate playlist rows. Deduplicate inside a single request while
+            # preserving order so accidental repeated IDs are idempotent.
+            params["songIdToAdd"] = list(dict.fromkeys(song_ids_to_add))
+        if song_indexes_to_remove:
+            params["songIndexToRemove"] = song_indexes_to_remove
 
         result = self._make_request("updatePlaylist", params)
+        return result is not None
+
+    def start_scan(self, full_scan: bool = False) -> bool:
+        """Trigger a Navidrome library scan"""
+        params = {"fullScan": "true"} if full_scan else None
+        result = self._make_request("startScan", params)
         return result is not None
 
     def delete_playlist(self, playlist_id: str) -> bool:
@@ -109,12 +211,32 @@ class NavidromeClient:
             logger.info(f"Deleted Navidrome playlist ID: {playlist_id}")
         return result is not None
 
-    def get_playlist_songs(self, playlist_id: str) -> list[dict]:
-        """Get all songs in a playlist"""
+    def get_playlist_songs(self, playlist_id: str) -> Optional[list[dict]]:
+        """
+        Get all songs in a playlist.
+
+        Returns None when the playlist lookup fails. This is intentionally
+        distinct from an empty list: callers must not add songs when Navidrome
+        timed out or returned an API error, otherwise transient lookup failures
+        create duplicate playlist rows.
+        """
         result = self._make_request("getPlaylist", {"id": playlist_id})
-        if result and "playlist" in result:
-            return result["playlist"].get("entry", [])
+        if result is None:
+            return None
+        if "playlist" not in result:
+            return []
+
+        entries = result["playlist"].get("entry", [])
+        if isinstance(entries, dict):
+            return [entries]
+        if isinstance(entries, list):
+            return entries
         return []
+
+    def playlist_exists(self, playlist_id: str) -> bool:
+        """Check if a playlist exists by ID"""
+        result = self._make_request("getPlaylist", {"id": playlist_id})
+        return bool(result and "playlist" in result)
 
     def search_songs(self, query: str) -> list[dict]:
         """Search for songs in Navidrome"""

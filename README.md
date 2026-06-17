@@ -36,7 +36,8 @@ El proyecto está dividido en dos servicios principales:
 - **Monitoreo continuo**: Observa periódicamente playlists de YouTube en segundo plano.
 - **Descargas asíncronas**: No bloquea la API mientras se descargan pistas pesadas.
 - **Calidad FLAC**: Convierte audio a formato FLAC sin pérdida usando `ffmpeg` y `yt-dlp`.
-- **Metadatos completos**: Añade título, artista, álbum, año y portada (usando `mutagen` y `Pillow`).
+- **Metadatos completos**: Añade título, artista, álbum, año, portada y `youtube_id` en el comentario FLAC (usando `mutagen` y `Pillow`).
+- **Sync Navidrome idempotente**: Guarda el estado de sincronización por pista para no re-procesar canciones completadas en cada ciclo.
 
 ## 🐳 Despliegue en Servidor (Paso a Paso)
 
@@ -89,6 +90,26 @@ Por ejemplo, si Navidrome lee de `/mnt/storage/media/music/`, el volumen del bac
       - /mnt/storage/media/music/:/downloads
 ```
 De esta manera, tan pronto como el Watcher descarga un nuevo FLAC, aparecerá mágicamente en tu Navidrome.
+
+#### Variables opcionales de sync Navidrome
+
+```env
+NAVIDROME_URL=https://music.example.com
+NAVIDROME_USER=usuario
+NAVIDROME_PASSWORD=contraseña
+NAVIDROME_GLOBAL_PLAYLIST_NAME=Toda la Música
+NAVIDROME_NEW_PLAYLIST_NAME=Lo más nuevo
+NAVIDROME_SYNC_FAILED_RETRY_HOURS=6
+NAVIDROME_SCAN_COOLDOWN_SECONDS=600
+```
+
+El watcher solo sincroniza una pista completada mientras esté pendiente/fallida y respeta backoff para canciones que Navidrome aún no puede resolver. Para reparar metadatos antiguos y rellenar `navidrome_song_id` sin cargar el ciclo normal:
+
+```bash
+cd backend
+python repair_navidrome_metadata.py --dry-run --write-tags --sync-navidrome
+python repair_navidrome_metadata.py --write-tags --sync-navidrome
+```
 
 ### Paso 3: Arrancar el servicio
 
@@ -145,7 +166,7 @@ El frontend en desarrollo correrá en el puerto `5173` y estará configurado par
 El proyecto utiliza GitHub Actions integradas con `ArkeonProject/organization-tools`.
 
 - **CI (`ci.yml`)**: Verifica linting, tipos de TypeScript, y ejecuta tests de Python para cualquier PR hacia `develop` o `main`.
-- **CD (`cd.yml`)**: Al hacer push a `main`, construye y publica las imágenes Docker duales (`ghcr.io/.../backend` y `ghcr.io/.../frontend`) en GHCR de forma automática.
+- **CD (`cd.yml`)**: Al hacer push a `main`, construye y publica las imágenes Docker duales (`ghcr.io/.../backend` y `ghcr.io/.../frontend`) en GHCR. Si Portainer usa tags fijos por SHA en su compose, el webhook no actualiza esos tags automáticamente; consulta [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#actualizaciones-y-cicd) antes de asumir que producción quedó desplegada.
 
 ## 📄 Licencia
 
