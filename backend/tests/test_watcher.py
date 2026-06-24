@@ -83,14 +83,11 @@ class TestYouTubeWatcher:
         
         watcher._process_video(video_data, source_id=1, db=db_mock)
 
-        # No se debe intentar descargar si ya está "completed"
+        # No se debe intentar descargar ni re-sincronizar Navidrome en cada pasada.
+        # Las canciones completadas se añaden a Navidrome al descargarse o mediante
+        # los flujos explícitos de sync, no desde el watcher continuo.
         watcher.downloader.download_and_convert.assert_not_called()
-        watcher._add_to_navidrome_playlist.assert_called_once_with(
-            1,
-            "abc123",
-            "Song",
-            is_new_download=False,
-        )
+        watcher._add_to_navidrome_playlist.assert_not_called()
 
     @patch("youtube_watcher.watcher.PlaylistMonitor")
     @patch("youtube_watcher.watcher.SessionLocal")

@@ -144,12 +144,11 @@ class YouTubeWatcher:
         
         if existing_track:
             if existing_track.download_status == "completed":
-                self._add_to_navidrome_playlist(
-                    source_id,
-                    existing_track.youtube_id,
-                    existing_track.title,
-                    is_new_download=False,
-                )
+                # Completed tracks are already downloaded and were synced to Navidrome
+                # at download time (or via the explicit startup/source sync paths).
+                # Retrying Navidrome playlist sync on every watcher pass causes
+                # repeated scans when a historical file cannot be found in Navidrome,
+                # which makes "recent/new" views churn continuously.
                 return
             if existing_track.download_status == "ignored":
                 return
