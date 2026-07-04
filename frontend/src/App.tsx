@@ -41,6 +41,8 @@ function App() {
   const [addType, setAddType] = useState('playlist');
   const [addName, setAddName] = useState('');
   const [adding, setAdding] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncSummary, setSyncSummary] = useState<string | null>(null);
 
   // Filters & Pagination
   const [filter, setFilter] = useState('all');
@@ -137,6 +139,40 @@ function App() {
       fetchData();
     } catch (e) { console.error(e); }
     setAdding(false);
+  };
+
+  const handleSyncAll = async () => {
+    setSyncing(true);
+    setSyncSummary(null);
+    try {
+      const res = await fetch(`${API}/sync/all`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Error sincronizando');
+      setSyncSummary(`Sync: ${data.new_items || 0} nuevas, ${data.queued_downloads || 0} encoladas, ${data.failed || 0} fallidas`);
+      fetchData();
+    } catch (e) {
+      console.error(e);
+      setSyncSummary(e instanceof Error ? e.message : 'Error sincronizando');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSyncSource = async (sourceId: number) => {
+    setSyncing(true);
+    setSyncSummary(null);
+    try {
+      const res = await fetch(`${API}/sources/${sourceId}/sync-once`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Error sincronizando fuente');
+      setSyncSummary(`Sync fuente: ${data.new_items || 0} nuevas, ${data.queued_downloads || 0} encoladas, ${data.failed || 0} fallidas`);
+      fetchData();
+    } catch (e) {
+      console.error(e);
+      setSyncSummary(e instanceof Error ? e.message : 'Error sincronizando fuente');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -248,7 +284,15 @@ function App() {
         {stats.pending > 0 && <div className="stat">⏳ <span className="stat-value">{stats.pending}</span> pendientes</div>}
         {stats.failed > 0 && <div className="stat">❌ <span className="stat-value">{stats.failed}</span> fallidas</div>}
         {stats.ignored > 0 && <div className="stat">🚫 <span className="stat-value">{stats.ignored}</span> ignoradas</div>}
+        <button className="btn btn-secondary" onClick={handleSyncAll} disabled={syncing} style={{ marginLeft: "auto", padding: "8px 14px" }}>
+          {syncing ? "Sincronizando..." : "🔄 Sincronizar ahora"}
+        </button>
       </div>
+      {syncSummary && (
+        <div className="card" style={{ padding: "10px 14px", fontSize: "13px", color: "var(--text-muted)" }}>
+          {syncSummary}
+        </div>
+      )}
 
       {/* ─── Toolbar ─────────────────────────── */}
       <div className="toolbar" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
@@ -478,6 +522,7 @@ function App() {
                       >
                         {s.status === 'active' ? '⏸ Activa' : '▶ Pausada'}
                       </button>
+                      <button className="btn btn-secondary" disabled={syncing} onClick={() => handleSyncSource(s.id)} style={{ padding: "6px 10px", fontSize: "12px" }} title="Sincronizar fuente ahora">🔄 Sync</button>
                       <button className="icon-btn danger" onClick={async () => {
                         await fetch(`${API}/sources/${s.id}`, { method: 'DELETE' });
                         fetchData();

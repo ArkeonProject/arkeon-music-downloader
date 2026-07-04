@@ -14,6 +14,7 @@ from .downloader import YouTubeDownloader
 from .playlist_monitor import PlaylistMonitor
 from .db.database import SessionLocal
 from .db.models import Source, Track
+from .discovery import RESYNC, is_latest_eligible
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class YouTubeWatcher:
                     videos = monitor.get_playlist_videos()
                     
                     for video_data in videos:
-                        self._process_video(video_data, source.id, db)
+                        self._process_video(video_data, source.id, db, discovery_reason=RESYNC)
                         
                     if self.enable_sync_deletions and source.type == "playlist":
                         self._detect_and_remove_deleted_videos(videos, source.id, db)
@@ -131,7 +132,7 @@ class YouTubeWatcher:
         
         return video_id, raw_title, title, artist, formatted_date, is_invalid
 
-    def _process_video(self, video_data: Dict, source_id: int, db):
+    def _process_video(self, video_data: Dict, source_id: int | None, db, *, discovery_reason: str = RESYNC):
         video_id, raw_title, title, artist, published_at, is_invalid = self._normalize_video_entry(video_data)
 
         if is_invalid:
@@ -176,7 +177,8 @@ class YouTubeWatcher:
                 artist=artist,
                 published_at=published_at,
                 source_id=source_id,
-                download_status="pending"
+                download_status="pending",
+                discovery_reason=discovery_reason,
             )
             db.add(existing_track)
             db.commit()
@@ -189,6 +191,9 @@ class YouTubeWatcher:
                 changed = True
             if not existing_track.published_at and published_at:
                 existing_track.published_at = published_at
+                changed = True
+            if existing_track.discovery_reason != discovery_reason:
+                existing_track.discovery_reason = discovery_reason
                 changed = True
             if changed:
                 db.commit()
@@ -217,7 +222,7 @@ class YouTubeWatcher:
                     source_id,
                     existing_track.youtube_id,
                     existing_track.title,
-                    is_new_download=True,
+                    add_to_latest=is_latest_eligible(discovery_reason),
                 )
             else:
                 self._mark_failed(existing_track, video_id, "download_failed", db)
@@ -326,7 +331,7 @@ class YouTubeWatcher:
         except Exception as e:
             logger.error(f"Error en auto-limpieza de .trash: {e}")
 
-    def _add_to_navidrome_playlist(self, source_id: int | None, youtube_id: str, title: str, *, is_new_download: bool):
+    def _add_to_navidrome_playlist(self, source_id: int | None, youtube_id: str, title: str, *, add_to_latest: bool = False):
         """Add a track to Navidrome playlists following business rules"""
         try:
             import os
@@ -393,8 +398,8 @@ class YouTubeWatcher:
                         if playlist_id:
                             self._add_song_to_playlist_by_id(client, playlist_id, navidrome_song_id, title, source.name)
 
-            # Add only newly downloaded tracks to "Lo más nuevo"
-            if is_new_download and new_playlist_name:
+            # Add only explicitly latest-eligible events to "Lo más nuevo"
+            if add_to_latest and new_playlist_name:
                 new_playlist_id = client.ensure_playlist(new_playlist_name)
                 if new_playlist_id:
                     self._add_song_to_playlist_by_id(client, new_playlist_id, navidrome_song_id, title, new_playlist_name)

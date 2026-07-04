@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch, MagicMock
 from youtube_watcher.watcher import YouTubeWatcher
 from youtube_watcher.playlist_monitor import PlaylistMonitor
 from youtube_watcher.db.models import Track, Source
+from youtube_watcher.discovery import UI_SINGLE
 
 class TestYouTubeWatcher:
     """Tests para la clase principal YouTubeWatcher (con DB mocking)"""
@@ -57,7 +58,7 @@ class TestYouTubeWatcher:
             }
         watcher.downloader.download_and_convert = Mock(side_effect=fake_download_and_convert)
         
-        watcher._process_video(video_data, source_id=1, db=db_mock)
+        watcher._process_video(video_data, source_id=1, db=db_mock, discovery_reason=UI_SINGLE)
 
         # Verifica que se haya intentando añadir a la base de datos
         assert db_mock.add.called
@@ -67,7 +68,7 @@ class TestYouTubeWatcher:
             1,
             "abc123",
             "Song",
-            is_new_download=True,
+            add_to_latest=True,
         )
 
     def test_process_video_skips_completed_track(self, tmp_path):
@@ -112,7 +113,7 @@ class TestYouTubeWatcher:
         watcher._check_all_sources()
         
         # Verificar que se procesó el video con sus respectivos DB arguments
-        watcher._process_video.assert_called_once_with({"id": "vid1", "title": "Song"}, 1, db_mock)
+        watcher._process_video.assert_called_once_with({"id": "vid1", "title": "Song"}, 1, db_mock, discovery_reason="resync")
 
     def test_add_song_to_playlist_by_id_uses_song_id_to_add(self, tmp_path):
         watcher = YouTubeWatcher(str(tmp_path))
@@ -174,7 +175,7 @@ class TestYouTubeWatcher:
             }
             mock_getenv.side_effect = lambda key, default=None: env.get(key, default)
 
-            watcher._add_to_navidrome_playlist(1, "yt123", "Song", is_new_download=True)
+            watcher._add_to_navidrome_playlist(1, "yt123", "Song", add_to_latest=True)
 
         client_instance.start_scan.assert_called_once_with()
         assert watcher._add_song_to_playlist_by_id.call_count == 3
@@ -207,10 +208,35 @@ class TestYouTubeWatcher:
             }
             mock_getenv.side_effect = lambda key, default=None: env.get(key, default)
 
-            watcher._add_to_navidrome_playlist(1, "yt123", "Song", is_new_download=True)
+            watcher._add_to_navidrome_playlist(1, "yt123", "Song", add_to_latest=True)
 
         assert source.navidrome_playlist_id == "pl-source-relinked"
         assert db_mock.commit.call_count >= 1
+
+    @patch("youtube_watcher.watcher.time.sleep", return_value=None)
+    def test_add_to_navidrome_playlist_skips_latest_when_not_eligible(self, _mock_sleep, tmp_path):
+        watcher = YouTubeWatcher(str(tmp_path))
+        watcher._add_song_to_playlist_by_id = Mock()
+        watcher._find_navidrome_song_id = Mock(return_value="song-nav")
+
+        client_instance = Mock()
+        client_instance.ensure_playlist.side_effect = ["pl-global"]
+
+        with patch("youtube_watcher.navidrome_client.NavidromeClient", return_value=client_instance), \
+             patch("os.getenv") as mock_getenv:
+            env = {
+                "NAVIDROME_URL": "https://music.example.com",
+                "NAVIDROME_USER": "user",
+                "NAVIDROME_PASSWORD": "pass",
+                "NAVIDROME_GLOBAL_PLAYLIST_NAME": "Toda la Musica",
+                "NAVIDROME_NEW_PLAYLIST_NAME": "Lo más nuevo",
+            }
+            mock_getenv.side_effect = lambda key, default=None: env.get(key, default)
+
+            watcher._add_to_navidrome_playlist(None, "yt123", "Song", add_to_latest=False)
+
+        client_instance.ensure_playlist.assert_called_once_with("Toda la Musica")
+        watcher._add_song_to_playlist_by_id.assert_called_once()
 
 
 class TestPlaylistMonitor:

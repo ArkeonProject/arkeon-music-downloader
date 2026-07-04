@@ -35,6 +35,34 @@ try:
 except Exception:
     pass
 
+try:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE tracks ADD COLUMN discovery_reason VARCHAR"))
+except Exception:
+    pass
+
+try:
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS source_items ("
+            "id INTEGER PRIMARY KEY, "
+            "source_id INTEGER NOT NULL, "
+            "youtube_id VARCHAR NOT NULL, "
+            "track_id INTEGER, "
+            "title VARCHAR, "
+            "position INTEGER, "
+            "status VARCHAR, "
+            "discovery_reason VARCHAR NOT NULL, "
+            "first_seen_at DATETIME, "
+            "last_seen_at DATETIME, "
+            "UNIQUE(source_id, youtube_id), "
+            "FOREIGN KEY(source_id) REFERENCES sources(id), "
+            "FOREIGN KEY(track_id) REFERENCES tracks(id)"
+            ")"
+        ))
+except Exception:
+    pass
+
 
 def _sync_existing_sources_to_navidrome():
     """Create missing Navidrome playlists for existing sources on startup"""
@@ -88,8 +116,8 @@ def _sync_existing_sources_to_navidrome():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Start the background watcher thread
-    logger.info("Starting YouTube Watcher background thread...")
+    # Startup: create watcher; optionally start the legacy observer thread
+    logger.info("Starting YouTube Watcher API lifespan...")
     import os
     # Por defecto usa carpeta local en desarrollo, en Docker será sobreescrita por /downloads
     download_path = os.getenv("DOWNLOAD_PATH", str(Path(__file__).parent.parent.parent.parent / "downloads"))
@@ -114,8 +142,13 @@ async def lifespan(app: FastAPI):
     )
     deps.set_watcher(watcher)
     
-    watcher_thread = threading.Thread(target=watcher.start, daemon=True)
-    watcher_thread.start()
+    watcher_autostart = str(os.getenv("WATCHER_AUTOSTART", "true")).lower() == "true"
+    if watcher_autostart:
+        logger.info("Starting YouTube Watcher background observer thread...")
+        watcher_thread = threading.Thread(target=watcher.start, daemon=True)
+        watcher_thread.start()
+    else:
+        logger.info("WATCHER_AUTOSTART=false; observer loop disabled. Use sync endpoints instead.")
     
     # Sync existing sources to Navidrome playlists (in background thread to not block startup)
     threading.Thread(target=_sync_existing_sources_to_navidrome, daemon=True).start()
