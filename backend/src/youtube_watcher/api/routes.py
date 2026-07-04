@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
@@ -6,15 +6,28 @@ from pydantic import BaseModel
 from datetime import datetime
 import logging
 import os
+import threading
 from pathlib import Path
 
 from ..db.database import get_db
 from ..db.models import Source, Track
 from .deps import get_watcher
+from ..discovery import UI_SINGLE
+from ..sync_service import sync_all_sources, sync_source_once
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_sync_lock = threading.Lock()
+
+
+def require_internal_token(authorization: str | None = Header(default=None)):
+    expected = os.getenv("MUSIC_DOWNLOADER_ADMIN_TOKEN")
+    if not expected:
+        return
+    if authorization != f"Bearer {expected}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 
 # --- Schemas ---
 
@@ -246,6 +259,37 @@ def update_source_status(source_id: int, status: str, db: Session = Depends(get_
     db.commit()
     return {"status": "success", "new_status": status}
 
+
+# --- Sync Routes ---
+
+@router.post("/sources/{source_id}/sync-once")
+def sync_source_endpoint(
+    source_id: int,
+    _: None = Depends(require_internal_token),
+):
+    """Run one explicit delta-sync for a source."""
+    if not _sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A sync is already running")
+    try:
+        result = sync_source_once(source_id, watcher=get_watcher())
+    finally:
+        _sync_lock.release()
+
+    if result.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Source not found")
+    return result
+
+
+@router.post("/sync/all")
+def sync_all_endpoint(_: None = Depends(require_internal_token)):
+    """Run one explicit delta-sync for all active playlist-like sources."""
+    if not _sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A sync is already running")
+    try:
+        return sync_all_sources(watcher=get_watcher())
+    finally:
+        _sync_lock.release()
+
 # --- Track Routes ---
 
 @router.get("/tracks", response_model=PaginatedTracks)
@@ -383,7 +427,7 @@ def trigger_single_download(req: SingleDownloadRequest, db: Session = Depends(ge
             try:
                 from ..db.database import SessionLocal
                 with SessionLocal() as bg_db:
-                    watcher._process_video(video_data, source_id=None, db=bg_db)
+                    watcher._process_video(video_data, source_id=None, db=bg_db, discovery_reason=UI_SINGLE)
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).error(f"Error descargando {video_id}: {e}")
@@ -400,7 +444,6 @@ def delete_track(track_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Track not found")
     
     # 1. Physically delete the file if it exists
-    import os
     if track.file_path and os.path.exists(track.file_path):
         try:
             os.remove(track.file_path)
