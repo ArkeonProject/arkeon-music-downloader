@@ -8,7 +8,7 @@ on:
 jobs:
   ci:
     name: Continuous Integration
-    uses: ArkeonProject/organization-tools/.github/workflows/ci-python.yml@v1.1.5
+    uses: ArkeonProject/organization-tools/.github/workflows/ci-python.yml@v1.9.0
     with:
       python-version: '3.12'
       working-directory: 'backend'
