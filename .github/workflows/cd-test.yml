@@ -10,7 +10,7 @@ on:
 
 jobs:
   test-build-backend:
-    uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.1.5
+    uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.9.0
     with:
       image_name: ${{ github.repository }}/backend
       mode: 'milestone'
@@ -19,7 +19,7 @@ jobs:
       context: './backend'
 
   test-build-frontend:
-    uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.1.5
+    uses: ArkeonProject/organization-tools/.github/workflows/reusable-docker-build.yml@v1.9.0
     with:
       image_name: ${{ github.repository }}/frontend
       mode: 'milestone'
