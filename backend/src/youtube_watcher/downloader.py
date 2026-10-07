@@ -112,24 +112,29 @@ class YouTubeDownloader:
             "Thumbnail URL resolved for '%s': %s", title, thumbnail_url or "<none>"
         )
 
-        # Sanitizar nombres
-        safe_title = self._sanitize_filename(title)
-        safe_artist = self._sanitize_filename(artist)
+        def has_real_value(value: str | None, placeholder: str) -> bool:
+            if not value:
+                return False
+            normalized = value.strip().lower()
+            return normalized != placeholder and not normalized.startswith("descargando...")
 
-        # Crear nombre de archivo
-        filename = f"{safe_artist} - {safe_title}.flac"
-        filename = self._trim_filename(filename, max_len=200)
-        output_path = self.download_path / filename
+        def output_for(current_title: str, current_artist: str) -> Path:
+            safe_title = self._sanitize_filename(current_title)
+            safe_artist = self._sanitize_filename(current_artist)
+            filename = self._trim_filename(f"{safe_artist} - {safe_title}.flac", max_len=200)
+            return self.download_path / filename
 
-        # Evitar duplicados: si el archivo ya existe, no volver a descargar
-        if output_path.exists():
-            logger.info(f"Archivo ya existe, omitiendo descarga: {filename}")
-            return {
-                "success": True,
-                "filename": filename,
-                "title": title,
-                "artist": artist,
-            }
+        # Skip a duplicate before downloading only when the supplied metadata is real.
+        if has_real_value(title, "unknown title") and has_real_value(artist, "unknown artist"):
+            existing_path = output_for(title, artist)
+            if existing_path.exists():
+                logger.info("Archivo ya existe, omitiendo descarga: %s", existing_path.name)
+                return {
+                    "success": True,
+                    "filename": existing_path.name,
+                    "title": title,
+                    "artist": artist,
+                }
 
         # Paso 1: Descargar audio en Opus
         opus_result = self._download_opus(video_data, title)
@@ -138,11 +143,38 @@ class YouTubeDownloader:
         temp_opus, full_info = opus_result
         
         if full_info:
+            # Direct retries may only have a UI placeholder; prefer yt-dlp's extracted
+            # metadata so the saved filename, database record, and tags are meaningful.
+            if not has_real_value(title, "unknown title"):
+                title = full_info.get("title") or title
+            if not has_real_value(artist, "unknown artist"):
+                artist = (
+                    full_info.get("artist")
+                    or full_info.get("channel")
+                    or full_info.get("uploader")
+                    or artist
+                )
+            album = video_data.get("album") or full_info.get("album") or artist
+            if not thumbnail_url:
+                thumbnail_url = full_info.get("thumbnail")
             new_upload_date = full_info.get("upload_date")
             if new_upload_date and len(new_upload_date) == 8:
                 formatted_date = f"{new_upload_date[:4]}-{new_upload_date[4:6]}-{new_upload_date[6:8]}"
             elif new_upload_date:
                 formatted_date = new_upload_date
+
+        output_path = output_for(title, artist)
+        filename = output_path.name
+        if output_path.exists():
+            logger.info("Archivo ya existe, omitiendo conversión: %s", filename)
+            temp_opus.unlink(missing_ok=True)
+            return {
+                "success": True,
+                "filename": filename,
+                "title": title,
+                "artist": artist,
+                "published_at": formatted_date,
+            }
 
         # Paso 2: Convertir a FLAC
         if not self._convert_to_flac(temp_opus, output_path, title):
