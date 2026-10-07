@@ -37,6 +37,43 @@ def test_download_and_convert_success(monkeypatch, tmp_path):
     assert metadata_calls["called"] is True
 
 
+def test_download_and_convert_uses_extracted_metadata_for_retry_placeholder(monkeypatch, tmp_path):
+    downloader = YouTubeDownloader(str(tmp_path))
+    temp_file = tmp_path / "temp_retryid.opus"
+
+    def mock_download(video_data, title):
+        temp_file.write_text("opus")
+        return temp_file, {
+            "title": "Actual Song",
+            "channel": "Actual Artist",
+            "upload_date": "20230101",
+        }
+
+    def mock_convert(opus_path, output_path, title):
+        output_path.write_text("flac")
+        return True
+
+    monkeypatch.setattr(downloader, "_download_opus", mock_download)
+    monkeypatch.setattr(downloader, "_convert_to_flac", mock_convert)
+    metadata_calls = {}
+    monkeypatch.setattr(
+        downloader.metadata_handler,
+        "add_metadata_and_cover",
+        lambda *args: metadata_calls.update({"title": args[1], "artist": args[2]}),
+    )
+
+    result = downloader.download_and_convert(
+        {"id": "retryid", "title": "Descargando... (retryid)"}
+    )
+
+    assert result is not None
+    assert result["title"] == "Actual Song"
+    assert result["artist"] == "Actual Artist"
+    assert result["filename"] == "Actual Artist - Actual Song.flac"
+    assert metadata_calls == {"title": "Actual Song", "artist": "Actual Artist"}
+    assert (tmp_path / result["filename"]).exists()
+
+
 def test_download_and_convert_download_failure(monkeypatch, tmp_path):
     downloader = YouTubeDownloader(str(tmp_path))
     monkeypatch.setattr(downloader, "_download_opus", lambda data, title: None)
