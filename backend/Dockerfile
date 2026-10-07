@@ -1,4 +1,8 @@
+FROM denoland/deno:bin-2.9.7 AS deno
+
 FROM python:3.14-slim
+COPY --from=deno /deno /usr/local/bin/deno
+RUN deno --version
 
 # Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
